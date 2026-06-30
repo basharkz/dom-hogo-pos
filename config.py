@@ -1,0 +1,1 @@
+DB_NAME = "school_voxys.db"
