@@ -2,10 +2,14 @@ import streamlit as st
 from database.connection import execute_query
 from database.inventory import calculate_dish_food_cost
 
+
 def render_menu_manager_tab():
     st.subheader("Редактор категорий и разделов")
     rows_cats_all = execute_query("SELECT cat_name FROM categories ORDER BY cat_name ASC", fetch="all")
     db_categories_list_all = [r[0] for r in rows_cats_all] if rows_cats_all else []
+
+    # Проверяем роль пользователя для защиты удаления
+    user_role = st.session_state.get("role") or st.session_state.get("user_role") or "Кассир"
 
     cat_edit_col1, cat_edit_col2 = st.columns(2)
     with cat_edit_col1:
@@ -36,7 +40,8 @@ def render_menu_manager_tab():
             else:
                 new_dish_cat = st.selectbox("Привязать к категории:", db_categories_list_all)
                 if st.form_submit_button("Сохранить блюдо") and new_dish_name:
-                    execute_query("INSERT OR IGNORE INTO menu (dish_name, price, category) VALUES (?, ?, ?)", (new_dish_name, new_dish_price, new_dish_cat))
+                    execute_query("INSERT OR IGNORE INTO menu (dish_name, price, category) VALUES (?, ?, ?)",
+                                  (new_dish_name, new_dish_price, new_dish_cat))
                     st.success(f"Блюдо '{new_dish_name}' добавлено!")
                     st.rerun()
 
@@ -54,7 +59,8 @@ def render_menu_manager_tab():
 
             if st.button("🔗 Добавить в рецепт"):
                 if rec_ing and rec_qty > 0:
-                    execute_query("INSERT INTO recipes (dish, ingredient, qty_needed) VALUES (?, ?, ?)", (selected_dish_rec, rec_ing, rec_qty))
+                    execute_query("INSERT INTO recipes (dish, ingredient, qty_needed) VALUES (?, ?, ?)",
+                                  (selected_dish_rec, rec_ing, rec_qty))
                     st.success("Ингредиент добавлен!")
                     st.rerun()
 
@@ -64,3 +70,17 @@ def render_menu_manager_tab():
             margin_percent = (margin / dish_sale_price * 100) if dish_sale_price > 0 else 0
 
             st.write(f"Себестоимость: **{int(food_cost)} тг.** | Маржа: **{int(margin)} тг.** ({int(margin_percent)}%)")
+
+            # --- БЛОК УДАЛЕНИЯ БЛЮДА (Только для Администратора) ---
+            if user_role == "Администратор":
+                st.write("---")
+                st.markdown("⚠️ **Опасная зона (Админ)**")
+                if st.button(f"🗑️ Полностью удалить блюдо '{selected_dish_rec}'", type="secondary",
+                             use_container_width=True):
+                    # 1. Удаляем блюдо из таблицы menu
+                    execute_query("DELETE FROM menu WHERE dish_name = ?", (selected_dish_rec,))
+                    # 2. Сразу чистим рецепты этого блюда, чтобы база оставалась чистой
+                    execute_query("DELETE FROM recipes WHERE dish = ?", (selected_dish_rec,))
+
+                    st.success(f"Блюдо '{selected_dish_rec}' и его рецепт успешно удалены!")
+                    st.rerun()
