@@ -1,11 +1,19 @@
 import streamlit as st
 from database.connection import init_db
 from gui.kassa import render_kassa_tab
+from gui.warehouse import render_warehouse_tab
 from gui.history import render_history_tab
-# ... (остальные импорты)
+from gui.menu_manager import render_menu_manager_tab
+from utils.printing import trigger_silent_print, trigger_z_report_print
 
-st.set_page_config(layout="wide")
+# 1. Настройка страницы
+st.set_page_config(
+    layout="wide",
+    page_title="POS-Терминал VOXYS",
+    page_icon="logo.png"
+)
 
+# Оптимизация: используем кеширование для инициализации базы данных
 @st.cache_resource
 def setup_application():
     init_db()
@@ -13,12 +21,17 @@ def setup_application():
 
 setup_application()
 
-if "authenticated" not in st.session_state: st.session_state.authenticated = False
-if "current_active_order_id" not in st.session_state: st.session_state.current_active_order_id = None
+# 2. Инициализация переменных сессии
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+if "user_role" not in st.session_state:
+    st.session_state.user_role = None
+if "current_active_order_id" not in st.session_state:
+    st.session_state.current_active_order_id = None
 
 # --- ОКНО ВХОДА ---
 if not st.session_state.authenticated:
-    st.markdown("<h1 style='text-align: center;'>🔒 Вход в систему VOXYS</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center;'>🔒 Вход в систему VOXYS</h1>", unsafe_html=True)
 
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
@@ -72,7 +85,7 @@ tabs_config = {
 
 tabs = st.tabs(tabs_config.get(role, []))
 
-# Функция-обертка для отрисовки в зависимости от индекса вкладки
+# Функция-обертка для отрисовки в зависимости от роли и индекса вкладки
 if role == "Кассир":
     with tabs[0]: render_kassa_tab()
     with tabs[1]: render_history_tab()
