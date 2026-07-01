@@ -1,0 +1,11 @@
+{
+  "deploy": {
+    "restartPolicyType": "ON_FAILURE",
+    "volumes": [
+      {
+        "mountPath": "/app/data",
+        "sizeGb": 1
+      }
+    ]
+  }
+}

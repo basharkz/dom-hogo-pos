@@ -5,7 +5,7 @@ from config import DB_NAME
 
 # Определяем путь к базе данных в системной папке /tmp,
 # которая сохраняет данные между деплоями в Railway
-DB_PATH = os.path.join("/tmp", DB_NAME)
+DB_PATH = os.path.join("/app/data", "database.db")
 
 
 def init_db():
