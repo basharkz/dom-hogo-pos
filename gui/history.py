@@ -1,15 +1,14 @@
 import streamlit as st
 import datetime
 from database.connection import execute_query
-from utils.printing import trigger_silent_print  # Импортируем функцию печати чека
+from utils.printing import trigger_silent_print
 
 
 def render_history_tab():
     st.subheader("📊 Аналитика и Финансовые показатели")
     today_date_str = str(datetime.date.today())
 
-    # Проверяем роль текущего пользователя из всех возможных переменных сессии
-    # Если зашёл Кассир, то user_role НЕ будет равен "Администратор"
+    # Проверяем роль текущего пользователя
     user_role = st.session_state.get("role") or st.session_state.get("user_role") or "Кассир"
 
     if st.button("🖨️ Закрыть смену и Распечатать Z-Отчет", type="secondary", use_container_width=True):
@@ -29,8 +28,10 @@ def render_history_tab():
         st.rerun()
 
     st.write("---")
+
+    # ИСПРАВЛЕННЫЙ ЗАПРОС: Заменили rowid на id для совместимости с PostgreSQL
     rows_sales = execute_query(
-        "SELECT date, dish, qty, total_price, receipt_id, discount_percent, payment_method FROM sales ORDER BY rowid DESC",
+        "SELECT date, dish, qty, total_price, receipt_id, discount_percent, payment_method FROM sales ORDER BY id DESC",
         fetch="all")
 
     if not rows_sales:
@@ -87,10 +88,8 @@ def render_history_tab():
 
                 st.write("---")
 
-                # Если вошел Администратор — создаем две колонки (для Печати и Удаления)
                 if user_role == "Администратор":
                     btn_col1, btn_col2 = st.columns(2)
-
                     with btn_col1:
                         if st.button(f"🖨️ Распечатать чек №{r_id}", key=f"btn_p_{r_id}", use_container_width=True):
                             trigger_silent_print(
@@ -102,15 +101,12 @@ def render_history_tab():
                                 order_id=r_id
                             )
                             st.success("Сигнал на печать отправлен!")
-
                     with btn_col2:
                         if st.button(f"❌ Удалить чек №{r_id}", key=f"btn_del_{r_id}", type="secondary",
                                      use_container_width=True):
                             execute_query("DELETE FROM sales WHERE receipt_id = ?", (r_id,))
                             st.success(f"Чек №{r_id} успешно удален!")
                             st.rerun()
-
-                # Если вошел Кассир — показываем ТОЛЬКО кнопку печати на всю ширину, кнопки удаления вообще не будет в коде
                 else:
                     if st.button(f"🖨️ Распечатать чек №{r_id}", key=f"btn_p_{r_id}", use_container_width=True):
                         trigger_silent_print(
