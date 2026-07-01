@@ -1,20 +1,11 @@
 import streamlit as st
-# Импортируем cache_resource для БД
 from database.connection import init_db
 from gui.kassa import render_kassa_tab
-from gui.warehouse import render_warehouse_tab
 from gui.history import render_history_tab
-from gui.menu_manager import render_menu_manager_tab
-from utils.printing import trigger_silent_print, trigger_z_report_print
+# ... (остальные импорты)
 
-# 1. Настройка страницы
-st.set_page_config(
-    layout="wide",
-    page_title="POS-Терминал VOXYS",
-    page_icon="logo.png"
-)
+st.set_page_config(layout="wide")
 
-# Оптимизация: используем кеширование для инициализации базы данных
 @st.cache_resource
 def setup_application():
     init_db()
@@ -22,14 +13,8 @@ def setup_application():
 
 setup_application()
 
-# 2. Инициализация переменных сессии
-if "authenticated" not in st.session_state:
-    st.session_state.authenticated = False
-if "user_role" not in st.session_state:
-    st.session_state.user_role = None
-# ИНИЦИАЛИЗАЦИЯ ПЕРЕМЕННОЙ ДЛЯ КАССЫ (исправление ошибки AttributeError)
-if "current_active_order_id" not in st.session_state:
-    st.session_state.current_active_order_id = None
+if "authenticated" not in st.session_state: st.session_state.authenticated = False
+if "current_active_order_id" not in st.session_state: st.session_state.current_active_order_id = None
 
 # --- ОКНО ВХОДА ---
 if not st.session_state.authenticated:

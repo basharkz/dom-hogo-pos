@@ -7,12 +7,10 @@ from utils.printing import trigger_silent_print
 def render_history_tab():
     st.subheader("📊 Аналитика и Финансовые показатели")
     today_date_str = str(datetime.date.today())
-
-    # Проверяем роль текущего пользователя
-    user_role = st.session_state.get("role") or st.session_state.get("user_role") or "Кассир"
+    user_role = st.session_state.get("user_role", "Кассир")
 
     if st.button("🖨️ Закрыть смену и Распечатать Z-Отчет", type="secondary", use_container_width=True):
-        today_sales_rows = execute_query("SELECT dish, qty, total_price, payment_method FROM sales WHERE date = ?",
+        today_sales_rows = execute_query("SELECT dish, qty, total_price, payment_method FROM sales WHERE date = %s",
                                          (today_date_str,), fetch="all")
         z_summary = {"cash": 0.0, "kaspi": 0.0, "total": 0.0, "dishes": {}}
         if today_sales_rows:
@@ -29,7 +27,6 @@ def render_history_tab():
 
     st.write("---")
 
-    # ИСПРАВЛЕННЫЙ ЗАПРОС: Заменили rowid на id для совместимости с PostgreSQL
     rows_sales = execute_query(
         "SELECT date, dish, qty, total_price, receipt_id, discount_percent, payment_method FROM sales ORDER BY id DESC",
         fetch="all")
@@ -37,20 +34,13 @@ def render_history_tab():
     if not rows_sales:
         st.info("Продаж пока не было.")
     else:
-        total_all_time = total_all_time_kaspi = total_all_time_cash = 0.0
         total_today = total_today_kaspi = total_today_cash = 0.0
         grouped_receipts, sales_by_date, dishes_popularity = {}, {}, {}
 
         for row in rows_sales:
             date, dish, qty, total_price, r_id, d_percent, pay_meth = row
-            total_all_time += total_price
             sales_by_date[date] = sales_by_date.get(date, 0.0) + total_price
             dishes_popularity[dish] = dishes_popularity.get(dish, 0) + qty
-
-            if pay_meth == "Kaspi QR":
-                total_all_time_kaspi += total_price
-            else:
-                total_all_time_cash += total_price
 
             if date == today_date_str:
                 total_today += total_price
@@ -65,22 +55,16 @@ def render_history_tab():
             grouped_receipts[r_id]["items"][dish] = qty
             grouped_receipts[r_id]["final_sum"] += total_price
 
-        st.markdown("#### 📆 Касса за сегодня")
+        # Вывод статистики
         t_col1, t_col2, t_col3 = st.columns(3)
         t_col1.metric("Выручка за сегодня:", f"{int(total_today)} тг.")
-        t_col2.metric("Сегодня через Kaspi QR:", f"{int(total_today_kaspi)} тг.")
-        t_col3.metric("Сегодня наличными:", f"{int(total_today_cash)} тг.")
-
-        st.write("---")
-        st.markdown("#### 📈 Графики эффективности")
-        g_col1, g_col2 = st.columns(2)
-        with g_col1:
-            st.line_chart(sales_by_date)
-        with g_col2:
-            st.bar_chart(dishes_popularity)
+        t_col2.metric("Kaspi QR:", f"{int(total_today_kaspi)} тг.")
+        t_col3.metric("Наличные:", f"{int(total_today_cash)} тг.")
 
         st.write("---")
         st.markdown("#### 📜 Журнал закрытых чеков")
+
+        # ТЕПЕРЬ ЦИКЛ НАХОДИТСЯ ВНУТРИ ELSE И ИМЕЕТ ДОСТУП К GROUPED_RECEIPTS
         for r_id, info in grouped_receipts.items():
             with st.expander(f"🧾 Чек №{r_id} | Дата: {info['date']} | Сумма: {int(info['final_sum'])} тг."):
                 for dish, qty in info["items"].items():
@@ -91,30 +75,17 @@ def render_history_tab():
                 if user_role == "Администратор":
                     btn_col1, btn_col2 = st.columns(2)
                     with btn_col1:
-                        if st.button(f"🖨️ Распечатать чек №{r_id}", key=f"btn_p_{r_id}", use_container_width=True):
-                            trigger_silent_print(
-                                order_name=f"Чек {r_id}",
-                                cart_dict=info["items"],
-                                flat_menu_prices={},
-                                discount_percent=info["discount"],
-                                pay_method=info["pay_method"],
-                                order_id=r_id
-                            )
-                            st.success("Сигнал на печать отправлен!")
+                        if st.button(f"🖨️ Распечатать №{r_id}", key=f"btn_p_{r_id}"):
+                            trigger_silent_print(f"Чек {r_id}", info["items"], {}, info["discount"], info["pay_method"],
+                                                 r_id)
+                            st.success("Отправлено!")
                     with btn_col2:
-                        if st.button(f"❌ Удалить чек №{r_id}", key=f"btn_del_{r_id}", type="secondary",
-                                     use_container_width=True):
-                            execute_query("DELETE FROM sales WHERE receipt_id = ?", (r_id,))
-                            st.success(f"Чек №{r_id} успешно удален!")
+                        if st.button(f"❌ Удалить №{r_id}", key=f"btn_del_{r_id}", type="secondary"):
+                            # ИСПРАВЛЕННЫЙ ЗАПРОС (заменили ? на %s)
+                            execute_query("DELETE FROM sales WHERE receipt_id = %s", (r_id,))
+                            st.success(f"Чек {r_id} удален!")
                             st.rerun()
                 else:
-                    if st.button(f"🖨️ Распечатать чек №{r_id}", key=f"btn_p_{r_id}", use_container_width=True):
-                        trigger_silent_print(
-                            order_name=f"Чек {r_id}",
-                            cart_dict=info["items"],
-                            flat_menu_prices={},
-                            discount_percent=info["discount"],
-                            pay_method=info["pay_method"],
-                            order_id=r_id
-                        )
-                        st.success("Сигнал на печать отправлен!")
+                    if st.button(f"🖨️ Распечатать №{r_id}", key=f"btn_p_{r_id}"):
+                        trigger_silent_print(f"Чек {r_id}", info["items"], {}, info["discount"], info["pay_method"],
+                                             r_id)
