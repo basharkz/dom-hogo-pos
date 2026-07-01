@@ -6,9 +6,11 @@ from database.orders import db_get_active_orders, db_get_order_by_id, db_update_
 
 
 def render_kassa_tab():
+    # Безопасное получение ID активного заказа
+    active_order_id = st.session_state.get("current_active_order_id")
+
     kassa_col1, kassa_col2 = st.columns([0.6, 0.4])
 
-    # Получение категорий и меню
     rows_cats = execute_query("SELECT cat_name FROM categories ORDER BY cat_name ASC", fetch="all")
     rows_menu = execute_query("SELECT dish_name, price, category FROM menu", fetch="all")
 
@@ -24,7 +26,6 @@ def render_kassa_tab():
     with kassa_col1:
         st.subheader("Активные чеки")
 
-        # Создание нового чека
         with st.popover("➕ Открыть Новый Чек"):
             new_order_name = st.text_input("Название (например, Стол 4):")
             if st.button("Создать"):
@@ -36,38 +37,38 @@ def render_kassa_tab():
                     st.session_state.current_active_order_id = new_id
                     st.rerun()
 
-        # Выбор чека
         if active_orders:
             for order in active_orders:
                 if st.button(f"🧾 {order['name']}", key=f"ord_{order['id']}"):
                     st.session_state.current_active_order_id = order['id']
                     st.rerun()
 
-        # Меню
         if DB_MENU_STRUCT:
             tabs = st.tabs(list(DB_MENU_STRUCT.keys()))
             for i, (cat, dishes) in enumerate(DB_MENU_STRUCT.items()):
                 with tabs[i]:
                     for dish, price in dishes.items():
                         if st.button(f"{dish} ({int(price)} тг)", key=f"add_{dish}"):
-                            if st.session_state.current_active_order_id:
+                            # Используем обновленный active_order_id
+                            if st.session_state.get("current_active_order_id"):
                                 order = db_get_order_by_id(st.session_state.current_active_order_id)
-                                order["cart"][dish] = order["cart"].get(dish, 0) + 1
-                                db_update_order(order)
-                                st.rerun()
+                                if order:
+                                    order["cart"][dish] = order["cart"].get(dish, 0) + 1
+                                    db_update_order(order)
+                                    st.rerun()
 
     with kassa_col2:
         st.subheader("Текущий чек")
-        if st.session_state.current_active_order_id:
-            order = db_get_order_by_id(st.session_state.current_active_order_id)
+        # Используем безопасный доступ
+        current_id = st.session_state.get("current_active_order_id")
+        if current_id:
+            order = db_get_order_by_id(current_id)
             if order:
                 st.write(f"Заказ: **{order['name']}**")
 
-                # Подсчет суммы
                 flat_prices = {dish: p for cat in DB_MENU_STRUCT.values() for dish, p in cat.items()}
                 total = sum(flat_prices.get(d, 0) * q for d, q in order["cart"].items())
 
-                # Список товаров
                 for dish, qty in order["cart"].items():
                     col_a, col_b = st.columns([0.8, 0.2])
                     col_a.write(f"{dish} x {qty}")
@@ -77,9 +78,8 @@ def render_kassa_tab():
                         db_update_order(order)
                         st.rerun()
 
-                # Оплата
-                disc = st.number_input("Скидка %", value=float(order["discount"]))
-                if disc != order["discount"]:
+                disc = st.number_input("Скидка %", value=float(order.get("discount", 0.0)))
+                if disc != order.get("discount", 0.0):
                     order["discount"] = disc
                     db_update_order(order)
                     st.rerun()

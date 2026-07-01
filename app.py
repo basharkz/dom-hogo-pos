@@ -27,6 +27,9 @@ if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 if "user_role" not in st.session_state:
     st.session_state.user_role = None
+# ИНИЦИАЛИЗАЦИЯ ПЕРЕМЕННОЙ ДЛЯ КАССЫ (исправление ошибки AttributeError)
+if "current_active_order_id" not in st.session_state:
+    st.session_state.current_active_order_id = None
 
 # --- ОКНО ВХОДА ---
 if not st.session_state.authenticated:
@@ -64,7 +67,7 @@ if st.sidebar.button("🚪 Выйти из системы"):
 st.sidebar.image("voxys_foto_logo3.png", use_container_width=True)
 st.sidebar.title(f"VOXYS | {st.session_state.user_role}")
 
-# Обработка событий печати (вынесена из логики отрисовки)
+# Обработка событий печати
 if "just_paid_order_data" in st.session_state and st.session_state.just_paid_order_data:
     p = st.session_state.just_paid_order_data
     trigger_silent_print(p["name"], p["cart"], p["prices"], p["discount"], p["method"], p["id"])
