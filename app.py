@@ -20,14 +20,20 @@ if "current_active_order_id" not in st.session_state: st.session_state.current_a
 
 # Окно входа
 if not st.session_state.authenticated:
-    st.markdown("<h1 style='text-align: center;'>🔒 Вход в систему VOXYS</h1>", unsafe_allow_html=True)
-    username = st.text_input("Логин:")
-    password = st.text_input("Пароль:", type="password")
-    if st.button("Войти"):
-        if username == "admin" and password == "1111":
-            st.session_state.authenticated = True
-            st.session_state.user_role = "Администратор"
-            st.rerun()
+    # Заменяем st.markdown с unsafe_html на обычный st.title
+    st.title("🔒 Вход в систему VOXYS")
+
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.image("voxys_foto_logo2.png", use_container_width=True)
+        username = st.text_input("Логин:")
+        password = st.text_input("Пароль:", type="password")
+
+        if st.button("Войти", use_container_width=True):
+            if username == "admin" and password == "1111":
+                st.session_state.authenticated = True
+                st.session_state.user_role = "Администратор"
+                st.rerun()
         else:
             st.error("Неверный логин или пароль")
     st.stop()
