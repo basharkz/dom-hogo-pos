@@ -1,19 +1,21 @@
-import sqlite3
-import streamlit as st
+import psycopg2
 import os
-from config import DB_NAME
+import streamlit as st
 
-# Определяем путь к базе данных в системной папке /tmp,
-# которая сохраняет данные между деплоями в Railway
-DB_PATH = os.path.join("/app/data", "database.db")
+# Получаем адрес базы данных, который мы прописали в переменных Railway
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
+
+def get_connection():
+    # Подключаемся к облачной базе PostgreSQL
+    return psycopg2.connect(DATABASE_URL)
 
 
 def init_db():
-    # Подключаемся к базе по новому безопасному пути
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection()
     cursor = conn.cursor()
 
-    # Создание таблиц
+    # В PostgreSQL команды создания таблиц те же самые
     cursor.execute('''CREATE TABLE IF NOT EXISTS inventory (date TEXT, item TEXT, qty REAL, price REAL, reason TEXT)''')
     cursor.execute(
         '''CREATE TABLE IF NOT EXISTS sales (date TEXT, dish TEXT, qty INTEGER, total_price REAL, receipt_id TEXT, discount_percent REAL, payment_method TEXT)''')
@@ -23,44 +25,49 @@ def init_db():
     cursor.execute(
         '''CREATE TABLE IF NOT EXISTS active_orders (order_id TEXT UNIQUE, order_name TEXT, cart_json TEXT, discount_percent REAL)''')
 
-    # Инициализация категорий, если пусто
+    # Инициализация категорий
     cursor.execute("SELECT COUNT(*) FROM categories")
     if cursor.fetchone()[0] == 0:
         base_cats = [("ХОГО",), ("ПИЦЦА",), ("СОУСЫ",), ("НАПИТКИ",)]
-        cursor.executemany("INSERT OR IGNORE INTO categories (cat_name) VALUES (?)", base_cats)
+        for cat in base_cats:
+            cursor.execute("INSERT INTO categories (cat_name) VALUES (%s) ON CONFLICT DO NOTHING", cat)
         conn.commit()
 
-    # Инициализация меню, если пусто
+    # Инициализация меню
     cursor.execute("SELECT COUNT(*) FROM menu")
     if cursor.fetchone()[0] == 0:
         base_menu = [
-            ("Красная Тарелка ", 1950, "ХОГО"),
-            ("Оранжевая Тарелка ", 1500, "ХОГО"),
-            ("Белая Тарелка ", 650, "ХОГО"),
-            (" Маргарита", 3000, "ПИЦЦА"),
+            ("Красная Тарелка ХОГО", 1950, "ХОГО"),
+            ("Оранжевая Тарелка ХОГО", 1500, "ХОГО"),
+            ("Белая Тарелка ХОГО", 650, "ХОГО"),
+            ("Пицца Маргарита", 3000, "ПИЦЦА"),
             ("Кола 0.5л", 300, "НАПИТКИ")
         ]
-        cursor.executemany("INSERT OR IGNORE INTO menu (dish_name, price, category) VALUES (?, ?, ?)", base_menu)
+        for item in base_menu:
+            cursor.execute("INSERT INTO menu (dish_name, price, category) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
+                           item)
         conn.commit()
     conn.close()
 
 
 def execute_query(query, data=None, fetch="none"):
-    # Используем DB_PATH для всех операций с базой
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection()
     cursor = conn.cursor()
     try:
+        # В Postgres используется %s вместо ?
+        query = query.replace("?", "%s")
         if data:
             cursor.execute(query, data)
         else:
             cursor.execute(query)
+
         result = None
         if fetch == "all":
             result = cursor.fetchall()
         elif fetch == "one":
             result = cursor.fetchone()
-        else:
-            conn.commit()
+
+        conn.commit()
         return result
     except Exception as e:
         st.error(f"Ошибка базы данных: {e}")
