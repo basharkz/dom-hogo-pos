@@ -35,7 +35,7 @@ if "current_active_order_id" not in st.session_state: st.session_state.current_a
 
 # --- ОКНО ВХОДА (Если не авторизован) ---
 if not st.session_state.authenticated:
-    st.markdown("<h1 style='text-align: center;'>🔒 Вход в систему VOXYS</h1>", unsafe_html=True)
+    st.markdown("<h1 style='text-align: center;'>🔒 Вход в систему VOXYS</h1>", unsafe_allow_html=True)
 
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
