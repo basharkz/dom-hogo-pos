@@ -30,34 +30,43 @@ def render_kassa_tab():
                     items = [item for item in menu_items if item[2] == cat[0]]
                     for item in items:
                         # Кнопка добавления блюда
-                        if st.button(f"{item[0]} — {item[1]} тг", key=f"btn_{item[0]}_{i}"):
+                        if st.button(f"{item[0]} ({item[1]} тг)", key=f"btn_{item[0]}_{i}"):
                             current_id = st.session_state.get("current_active_order_id")
                             if current_id:
-                                # Получаем текущий заказ, обновляем корзину
+                                # Получаем текущий заказ
                                 order = db_get_order_by_id(current_id)
-                                cart = order.get("cart", {})
-                                if isinstance(cart, str): cart = json.loads(cart)  # Если вдруг в базе json строкой
+                                if order:
+                                    # Обработка корзины (гарантируем, что это словарь)
+                                    cart = order.get("cart", {})
+                                    if isinstance(cart, str):
+                                        cart = json.loads(cart)
 
-                                # Добавляем блюдо или увеличиваем кол-во
-                                cart[item[0]] = cart.get(item[0], 0) + 1
+                                    # Добавляем блюдо
+                                    cart[item[0]] = cart.get(item[0], 0) + 1
 
-                                # Сохраняем обратно через db_update_order
-                                db_update_order(current_id, {"cart": cart})
-                                st.rerun()
+                                    # Сохраняем обратно
+                                    db_update_order(current_id, {"cart": cart})
+                                    st.rerun()
                             else:
                                 st.warning("⚠️ Сначала создайте или выберите чек!")
 
     with kassa_col2:
         st.subheader("📋 Активный чек")
 
-        # Кнопка "Новый заказ" (создает запись в active_orders)
+        # Кнопка "Новый заказ"
         if st.button("➕ Создать новый заказ"):
-            # Создаем пустой заказ в БД
-            execute_query("INSERT INTO active_orders (table_name, cart) VALUES (%s, %s)", ("Стол 1", json.dumps({})))
-            # Получаем ID последнего созданного заказа
-            new_id = execute_query("SELECT MAX(order_id) FROM active_orders", fetch="one")[0]
-            st.session_state.current_active_order_id = new_id
-            st.rerun()
+            try:
+                # ВАЖНО: Используем RETURNING для получения ID сразу после вставки
+                sql = "INSERT INTO active_orders (table_name, cart) VALUES (%s, %s) RETURNING order_id"
+                result = execute_query(sql, ("Стол 1", json.dumps({})), fetch="one")
+
+                if result:
+                    st.session_state.current_active_order_id = result[0]
+                    st.rerun()
+                else:
+                    st.error("Ошибка при получении ID заказа.")
+            except Exception as e:
+                st.error(f"Ошибка при создании заказа: {e}")
 
         current_id = st.session_state.get("current_active_order_id")
 
@@ -66,13 +75,11 @@ def render_kassa_tab():
             if order:
                 st.write(f"**Чек №: {order['id']}**")
 
-                # Отображение товаров в чеке
                 cart = order.get("cart", {})
                 if isinstance(cart, str): cart = json.loads(cart)
 
                 total_sum = 0
                 for dish, qty in cart.items():
-                    # Нужно подтянуть цену из меню для расчета суммы
                     price_row = execute_query("SELECT price FROM menu WHERE dish_name = %s", (dish,), fetch="one")
                     price = price_row[0] if price_row else 0
                     st.write(f"{dish} x {qty} = {price * qty} тг")
@@ -85,7 +92,6 @@ def render_kassa_tab():
                 if st.button("✅ Оплатить"):
                     try:
                         today = str(datetime.date.today())
-                        # Запись каждой позиции в sales
                         for d, q in cart.items():
                             execute_query(
                                 """INSERT INTO sales 
@@ -94,7 +100,6 @@ def render_kassa_tab():
                                 (today, d, q, total_sum, str(order["id"]), 0, "Наличные")
                             )
 
-                        # Удаление заказа
                         execute_query("DELETE FROM active_orders WHERE order_id = %s", (order["id"],))
                         st.session_state.current_active_order_id = None
                         st.success("Оплата принята!")
@@ -113,8 +118,10 @@ def render_kassa_tab():
     active_orders = db_get_active_orders()
     if active_orders:
         for ord_data in active_orders:
-            if st.button(f"Заказ {ord_data['order_id']} | {ord_data['table_name']}", key=f"ord_{ord_data['order_id']}"):
-                st.session_state.current_active_order_id = ord_data['order_id']
+            # Превращаем ID в строку для корректного отображения
+            ord_id = ord_data.get('order_id')
+            if st.button(f"Заказ {ord_id} | {ord_data.get('table_name', 'Без стола')}", key=f"ord_{ord_id}"):
+                st.session_state.current_active_order_id = ord_id
                 st.rerun()
     else:
         st.write("Нет открытых заказов.")
