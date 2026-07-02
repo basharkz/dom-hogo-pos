@@ -34,8 +34,8 @@ if not st.session_state.authenticated:
                 st.session_state.authenticated = True
                 st.session_state.user_role = "Администратор"
                 st.rerun()
-        else:
-            st.error("Неверный логин или пароль")
+            else:
+                st.error("Неверный логин или пароль")
     st.stop()
 
 # Интерфейс
