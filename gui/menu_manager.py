@@ -1,51 +1,67 @@
+import psycopg2
+import os
 import streamlit as st
-from database.connection import execute_query
+
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
 
-def render_menu_manager_tab():
-    st.subheader("📋 Управление меню")
+def get_connection():
+    return psycopg2.connect(DATABASE_URL)
 
-    # --- ФОРМА ДОБАВЛЕНИЯ ---
-    with st.expander("➕ Добавить новое блюдо", expanded=False):
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            new_name = st.text_input("Название блюда")
-        with col2:
-            new_price = st.number_input("Цена (тг)", min_value=0, value=0)
-        with col3:
-            new_cat = st.text_input("Категория (например: Закуски)")
 
-        if st.button("Сохранить в меню"):
-            if new_name and new_cat:
-                execute_query(
-                    "INSERT INTO menu (dish_name, price, category) VALUES (%s, %s, %s)",
-                    (new_name, new_price, new_cat)
-                )
-                st.success(f"Блюдо '{new_name}' добавлено!")
-                st.rerun()  # Обязательно обновляем страницу
-            else:
-                st.error("Заполните название и категорию!")
+def init_db():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''CREATE TABLE IF NOT EXISTS inventory (date TEXT, item TEXT, qty REAL, price REAL, reason TEXT)''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS sales (
+        id SERIAL PRIMARY KEY, 
+        date TEXT, dish TEXT, qty INTEGER, total_price REAL, 
+        receipt_id TEXT, discount_percent REAL, payment_method TEXT
+    )''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS menu (dish_name TEXT UNIQUE, price REAL, category TEXT)''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS recipes (dish TEXT, ingredient TEXT, qty_needed REAL)''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS categories (cat_name TEXT UNIQUE)''')
+    cursor.execute(
+        '''CREATE TABLE IF NOT EXISTS active_orders (order_id TEXT UNIQUE, order_name TEXT, cart_json TEXT, discount_percent REAL)''')
 
-    st.write("---")
+    cursor.execute("SELECT COUNT(*) FROM categories")
+    if cursor.fetchone()[0] == 0:
+        base_cats = [("ХОГО",), ("ПИЦЦА",), ("СОУСЫ",), ("НАПИТКИ",)]
+        for cat in base_cats:
+            cursor.execute("INSERT INTO categories (cat_name) VALUES (%s) ON CONFLICT DO NOTHING", cat)
 
-    # --- СПИСОК БЛЮД ---
-    st.write("### Текущее меню")
+    conn.commit()  # ДОБАВЬТЕ ЭТО!
+    cursor.close()
+    conn.close()
 
-    # Получаем список блюд
-    rows = execute_query("SELECT id, dish_name, price, category FROM menu ORDER BY category, dish_name", fetch="all")
 
-    if rows:
-        # Создаем таблицу
-        for row in rows:
-            menu_id, name, price, cat = row
-            col_a, col_b, col_c = st.columns([0.4, 0.2, 0.2])
+def execute_query(query, params=None, fetch="none"):
+    """Универсальная функция для выполнения запросов с автоматическим commit"""
+    conn = get_connection()
+    cursor = conn.cursor()
 
-            col_a.write(f"**{name}** | {cat}")
-            col_b.write(f"{int(price)} тг")
+    try:
+        if params:
+            cursor.execute(query, params)
+        else:
+            cursor.execute(query)
 
-            # Кнопка удаления
-            if col_c.button("🗑️ Удалить", key=f"del_{menu_id}"):
-                execute_query("DELETE FROM menu WHERE id = %s", (menu_id,))
-                st.rerun()  # Обновляем страницу после удаления
-    else:
-        st.info("Меню пустое. Добавьте первое блюдо.")
+        # Для INSERT, UPDATE, DELETE - делаем commit
+        if query.strip().upper().startswith(('INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP', 'ALTER')):
+            conn.commit()
+
+        if fetch == "all":
+            result = cursor.fetchall()
+        elif fetch == "one":
+            result = cursor.fetchone()
+        else:
+            result = None
+
+        cursor.close()
+        conn.close()
+        return result
+    except Exception as e:
+        conn.rollback()  # Откатываем при ошибке
+        cursor.close()
+        conn.close()
+        raise e
