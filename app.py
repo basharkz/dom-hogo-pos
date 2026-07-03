@@ -59,14 +59,7 @@ if not st.session_state.authenticated:
 with st.sidebar:
     st.title(f"VOXYS | {st.session_state.user_role}")
 
-    # Кнопка очистки (для исправления ошибки)
-    if st.button("🚨 УДАЛИТЬ ВСЕ ЗАКАЗЫ (Panic Button)"):
-        try:
-            execute_query("DELETE FROM active_orders")
-            st.success("База очищена! Перезагрузи страницу.")
-            st.rerun()
-        except Exception as e:
-            st.error(f"Ошибка: {e}")
+
 
     st.write("---")
     if st.button("🚪 Выйти из системы"):
