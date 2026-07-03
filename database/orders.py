@@ -62,3 +62,34 @@ def db_update_order(order_dict):
         "UPDATE active_orders SET order_name = %s, cart_json = %s, discount_percent = %s WHERE order_id = %s",
         (order_dict["name"], cart_json, order_dict["discount"], order_dict["id"])
     )
+    # ✅ ВАЖНО: execute_query уже делает commit, если ваша функция его содержит!
+    # Если в вашей функции execute_query нет commit, добавьте его здесь:
+
+
+def db_create_order(order_name, cart_items, discount_percent=0):
+    """Создание нового заказа"""
+    import uuid
+    order_id = str(uuid.uuid4())[:8]  # Генерируем ID заказа
+    cart_json = json.dumps(cart_items)
+
+    execute_query(
+        "INSERT INTO active_orders (order_id, order_name, cart_json, discount_percent) VALUES (%s, %s, %s, %s)",
+        (order_id, order_name, cart_json, discount_percent)
+    )
+    # ✅ commit уже внутри execute_query
+    return order_id
+
+
+def db_delete_order(order_id):
+    """Удаление заказа"""
+    execute_query(
+        "DELETE FROM active_orders WHERE order_id = %s",
+        (order_id,)
+    )
+    # ✅ commit уже внутри execute_query
+
+
+def db_clear_all_orders():
+    """Очистка всех заказов"""
+    execute_query("DELETE FROM active_orders")
+    # ✅ commit уже внутри execute_query
