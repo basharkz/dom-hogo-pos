@@ -10,7 +10,6 @@ def render_kassa_tab():
     kassa_col1, kassa_col2 = st.columns([0.6, 0.4])
 
     rows_menu = execute_query("SELECT dish_name, price, category FROM menu", fetch="all")
-
     DB_MENU_STRUCT = {}
     if rows_menu:
         for row in rows_menu:
@@ -22,20 +21,18 @@ def render_kassa_tab():
 
     with kassa_col1:
         st.subheader("Активные чеки")
-
         if st.button("➕ Открыть Новый Чек", type="primary", use_container_width=True):
             today_str = datetime.date.today().strftime("%y%m%d")
             new_order_num = len(active_orders) + 1
             new_id = f"{today_str}-{new_order_num}"
+            # Теперь cart - это пустой список []
             execute_query(
                 "INSERT INTO active_orders (order_id, order_name, cart_json, discount_percent) VALUES (%s, %s, %s, %s)",
-                (new_id, f"Чек №{new_order_num}", json.dumps({}), 0.0)
-            )
+                (new_id, f"Чек №{new_order_num}", json.dumps([]), 0.0))
             st.session_state.current_active_order_id = new_id
             st.rerun()
 
         st.write("---")
-
         if active_orders:
             cols = st.columns(3)
             for idx, order in enumerate(active_orders):
@@ -54,7 +51,15 @@ def render_kassa_tab():
                             if st.session_state.current_active_order_id:
                                 order = db_get_order_by_id(st.session_state.current_active_order_id)
                                 if order:
-                                    order["cart"][dish] = order["cart"].get(dish, 0) + 1
+                                    # Логика добавления: ищем, есть ли уже блюдо
+                                    found = False
+                                    for item in order["cart"]:
+                                        if item["name"] == dish:
+                                            item["qty"] += 1
+                                            found = True
+                                            break
+                                    if not found:
+                                        order["cart"].append({"name": dish, "price": price, "qty": 1})
                                     db_update_order(order)
                                     st.rerun()
 
@@ -64,15 +69,19 @@ def render_kassa_tab():
             order = db_get_order_by_id(st.session_state.current_active_order_id)
             if order:
                 st.success(f"Выбран: **{order['name']}**")
-                flat_prices = {dish: p for cat in DB_MENU_STRUCT.values() for dish, p in cat.items()}
-                total = sum(flat_prices.get(d, 0) * q for d, q in order["cart"].items())
 
-                for dish, qty in list(order["cart"].items()):
-                    col_a, col_b = st.columns([0.8, 0.2])
-                    col_a.write(f"{dish} x {qty}")
-                    if col_b.button("❌", key=f"del_{dish}_{order['id']}"):
-                        order["cart"][dish] -= 1
-                        if order["cart"][dish] <= 0: del order["cart"][dish]
+                # Расчет суммы
+                total = sum(item["price"] * item["qty"] for item in order["cart"])
+
+                # Отображение позиций
+                for item in list(order["cart"]):
+                    col_a, col_b, col_c = st.columns([0.5, 0.3, 0.2])
+                    col_a.write(f"**{item['name']}**")  # Наименование отдельно
+                    col_b.write(f"{int(item['price'])} тг x {item['qty']}")  # Цена отдельно
+                    if col_c.button("❌", key=f"del_{item['name']}_{order['id']}"):
+                        item["qty"] -= 1
+                        if item["qty"] <= 0:
+                            order["cart"].remove(item)
                         db_update_order(order)
                         st.rerun()
 
@@ -90,28 +99,21 @@ def render_kassa_tab():
 
                 if st.button("✅ Оплатить и закрыть", type="primary", use_container_width=True):
                     today = str(datetime.date.today())
-
-                    # 1. Запись продаж и списание ингредиентов
-                    for d, q in order["cart"].items():
+                    for item in order["cart"]:
                         execute_query(
                             "INSERT INTO sales (date, dish, qty, total_price, receipt_id, discount_percent, payment_method) VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                            (today, d, q, flat_prices.get(d, 0) * q, order["id"], disc, pay_method)
+                            (today, item["name"], item["qty"], item["price"] * item["qty"], order["id"], disc,
+                             pay_method)
                         )
-
-                        recipe_rows = execute_query("SELECT ingredient, qty_needed FROM recipes WHERE dish = %s", (d,),
-                                                    fetch="all")
+                        recipe_rows = execute_query("SELECT ingredient, qty_needed FROM recipes WHERE dish = %s",
+                                                    (item["name"],), fetch="all")
                         if recipe_rows:
                             for ing, needed in recipe_rows:
                                 execute_query(
                                     "INSERT INTO inventory (date, item, qty, price, reason) VALUES (%s, %s, %s, %s, %s)",
-                                    (today, ing, -needed * q, 0.0, "Продажа")
-                                )
+                                    (today, ing, -needed * item["qty"], 0.0, "Продажа"))
 
-                    # 2. Печать
-                    js_code = """<script>window.print();</script>"""
-                    components.html(js_code, height=0)
-
-                    # 3. Финал: удаляем заказ
+                    components.html("<script>window.print();</script>", height=0)
                     execute_query("DELETE FROM active_orders WHERE order_id = %s", (order["id"],))
                     st.session_state.current_active_order_id = None
                     st.success("Заказ оплачен!")
