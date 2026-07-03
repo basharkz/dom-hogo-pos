@@ -1,6 +1,7 @@
 import streamlit as st
 import datetime
 import json
+import streamlit.components.v1 as components
 from database.connection import execute_query
 from database.orders import db_get_active_orders, db_get_order_by_id, db_update_order
 
@@ -89,19 +90,31 @@ def render_kassa_tab():
 
                 if st.button("✅ Оплатить и закрыть", type="primary", use_container_width=True):
                     today = str(datetime.date.today())
+
+                    # 1. Запись продаж и списание ингредиентов
                     for d, q in order["cart"].items():
                         execute_query(
                             "INSERT INTO sales (date, dish, qty, total_price, receipt_id, discount_percent, payment_method) VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                            (today, d, q, flat_prices.get(d, 0) * q, order["id"], disc, pay_method))
+                            (today, d, q, flat_prices.get(d, 0) * q, order["id"], disc, pay_method)
+                        )
+
                         recipe_rows = execute_query("SELECT ingredient, qty_needed FROM recipes WHERE dish = %s", (d,),
                                                     fetch="all")
                         if recipe_rows:
                             for ing, needed in recipe_rows:
                                 execute_query(
                                     "INSERT INTO inventory (date, item, qty, price, reason) VALUES (%s, %s, %s, %s, %s)",
-                                    (today, ing, -needed * q, 0.0, "Продажа"))
+                                    (today, ing, -needed * q, 0.0, "Продажа")
+                                )
+
+                    # 2. Печать
+                    js_code = """<script>window.print();</script>"""
+                    components.html(js_code, height=0)
+
+                    # 3. Финал: удаляем заказ
                     execute_query("DELETE FROM active_orders WHERE order_id = %s", (order["id"],))
                     st.session_state.current_active_order_id = None
+                    st.success("Заказ оплачен!")
                     st.rerun()
             else:
                 st.session_state.current_active_order_id = None
