@@ -6,25 +6,48 @@ DATABASE_URL = os.environ.get("DATABASE_URL")
 def get_connection():
     return psycopg2.connect(DATABASE_URL)
 
-def execute_query(query, params=(), fetch=None):
-    conn = get_connection()
-    cur = conn.cursor()
+
+def execute_query(query, params=None, fetch="none"):
+    """Универсальная функция для выполнения запросов"""
+    conn = None
+    cursor = None
     try:
-        cur.execute(query, params)
-        if fetch == "all":
-            result = cur.fetchall()
-        elif fetch == "one":
-            result = cur.fetchone()
+        conn = get_connection()
+        if not conn:
+            return None
+
+        cursor = conn.cursor()
+
+        if params:
+            cursor.execute(query, params)
         else:
-            conn.commit()  # Обязательно для сохранения данных
+            cursor.execute(query)
+
+        # ⚠️ ВАЖНО: Для запросов изменения данных - делаем commit
+        query_upper = query.strip().upper()
+        if query_upper.startswith(('INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP', 'ALTER', 'TRUNCATE')):
+            conn.commit()  # ✅ ЭТО ОБЯЗАТЕЛЬНО!
+
+        if fetch == "all":
+            result = cursor.fetchall()
+        elif fetch == "one":
+            result = cursor.fetchone()
+        else:
             result = None
-        return result
-    except Exception as e:
-        print(f"Ошибка БД: {e}")
-        return None
-    finally:
-        cur.close()
+
+        cursor.close()
         conn.close()
+        return result
+
+    except Exception as e:
+        if conn:
+            conn.rollback()  # Откатываем при ошибке
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+        print(f"Ошибка базы данных: {e}")
+        return None
 
 def init_db():
     conn = get_connection()
