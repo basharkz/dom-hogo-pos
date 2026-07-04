@@ -25,12 +25,9 @@ def render_kassa_tab():
     with kassa_col1:
         st.subheader("Активные чеки")
 
-        # --- ИСПРАВЛЕНИЕ 1: Правильный числовой ID ---
         if st.button("Открыть Новый Чек", type="primary", use_container_width=True):
             today_str = datetime.date.today().strftime("%y%m%d")
             new_order_num = len(active_orders) + 1
-
-            # Делаем чистое число (например, 26070401) для PostgreSQL
             new_id = int(f"{today_str}{new_order_num:02d}")
 
             execute_query(
@@ -42,7 +39,6 @@ def render_kassa_tab():
 
         st.write("---")
 
-        # Отображение существующих чеков
         if active_orders:
             cols = st.columns(3)
             for idx, order in enumerate(active_orders):
@@ -53,7 +49,6 @@ def render_kassa_tab():
 
         st.write("---")
 
-        # Отображение меню по категориям
         if DB_MENU_STRUCT:
             tabs = st.tabs(list(DB_MENU_STRUCT.keys()))
             for i, (cat, dishes) in enumerate(DB_MENU_STRUCT.items()):
@@ -81,10 +76,8 @@ def render_kassa_tab():
             if order:
                 st.success(f"Выбран: **{order['name']}**")
 
-                # Расчет суммы
                 total = sum(item["price"] * item["qty"] for item in order["cart"])
 
-                # Отображение позиций в чеке
                 for item in list(order["cart"]):
                     col_a, col_b, col_c = st.columns([0.5, 0.3, 0.2])
                     col_a.write(f"**{item['name']}**")
@@ -98,7 +91,6 @@ def render_kassa_tab():
 
                 st.write("---")
 
-                # Скидка
                 disc = st.number_input("Скидка %", min_value=0.0, max_value=100.0, step=5.0,
                                        value=float(order["discount"]))
                 if disc != order["discount"]:
@@ -113,64 +105,179 @@ def render_kassa_tab():
                 if st.button("✅ Оплатить и закрыть", type="primary", use_container_width=True):
                     today = str(datetime.date.today())
 
-                    # 1. Формируем HTML-код чека (это то, что будет печататься)
+                    # ✅ ОПРЕДЕЛЯЕМ ВСЕ ПЕРЕМЕННЫЕ
+                    discount_percent = disc
+                    payment_method = pay_method
+                    final_total_after_discount = final_total * (1 - discount_percent / 100)
+                    receipt_id = order["id"]  # ✅ Используем ID заказа как номер чека
+
+                    # Формируем HTML для чека
                     items_html = ""
                     for item in order["cart"]:
-                        items_html += f"<tr><td>{item['name']}</td><td>x{item['qty']}</td><td>{int(item['price'] * item['qty'])} тг</td></tr>"
+                        items_html += f"""
+                            <tr>
+                                <td class="item-name">{item['name']}</td>
+                                <td class="item-qty">x{item['qty']}</td>
+                                <td class="item-price">{int(item['price'] * item['qty'])}</td>
+                            </tr>
+                        """
 
-                    # Сам макет чека
+                    # Строка со скидкой
+                    discount_html = ""
+                    if discount_percent > 0:
+                        discount_amount = final_total * (discount_percent / 100)
+                        discount_html = f"""
+                            <tr class="discount-row">
+                                <td colspan="2">Скидка ({discount_percent}%):</td>
+                                <td class="item-price">-{int(discount_amount)} тг</td>
+                            </tr>
+                        """
+
                     receipt_content = f"""
                     <html>
                         <head>
                             <style>
-                                body {{ width: 280px; font-family: 'Courier New', monospace; margin: 0; padding: 5px; }}
-                                h2 {{ text-align: center; margin: 5px 0; }}
-                                table {{ width: 100%; border-collapse: collapse; }}
-                                td {{ padding: 2px; }}
-                                hr {{ border: 0; border-top: 1px dashed #000; }}
+                                body {{ 
+                                    width: 280px; 
+                                    font-family: 'Courier New', monospace; 
+                                    margin: 0; 
+                                    padding: 10px;
+                                    background: white;
+                                }}
+                                h2 {{ 
+                                    text-align: center; 
+                                    margin: 5px 0; 
+                                    font-size: 18px;
+                                }}
+                                .header {{
+                                    text-align: center;
+                                    font-size: 12px;
+                                    margin: 5px 0;
+                                }}
+                                .divider {{
+                                    border: 0;
+                                    border-top: 1px dashed #000;
+                                    margin: 8px 0;
+                                }}
+                                .divider-double {{
+                                    border: 0;
+                                    border-top: 2px solid #000;
+                                    margin: 8px 0;
+                                }}
+                                table {{ 
+                                    width: 100%; 
+                                    border-collapse: collapse;
+                                    font-size: 13px;
+                                }}
+                                td {{ 
+                                    padding: 3px 0;
+                                    vertical-align: top;
+                                }}
+                                .item-name {{
+                                    width: 60%;
+                                    padding-right: 10px;
+                                }}
+                                .item-qty {{
+                                    width: 15%;
+                                    text-align: center;
+                                }}
+                                .item-price {{
+                                    width: 25%;
+                                    text-align: right;
+                                }}
+                                .total-row {{
+                                    font-weight: bold;
+                                    font-size: 16px;
+                                }}
+                                .discount-row {{
+                                    font-size: 13px;
+                                    color: #666;
+                                }}
+                                .footer {{
+                                    text-align: center;
+                                    font-size: 12px;
+                                    margin-top: 10px;
+                                }}
+                                .thank-you {{
+                                    text-align: center;
+                                    font-size: 14px;
+                                    font-weight: bold;
+                                    margin: 10px 0;
+                                }}
+                                .order-number {{
+                                    text-align: center;
+                                    font-size: 11px;
+                                    color: #666;
+                                    margin: 3px 0;
+                                }}
                             </style>
                         </head>
                         <body>
-                            <h2>WoJia HUOGUO</h2>
-                            <p style="text-align: center;">{datetime.datetime.now().strftime('%d.%m.%Y %H:%M')}</p>
-                            <hr>
-                            <table>{items_html}</table>
-                            <hr>
-                            <h3 style="text-align: right;">ИТОГО: {int(final_total)} тг</h3>
-                            <h4 style="text-align: center;">Приятного аппетита</h4>
+                            <h2>🏮 WoJia HUOGUO</h2>
+                            <div class="header">{datetime.datetime.now().strftime('%d.%m.%Y %H:%M')}</div>
+                            <div class="order-number">Чек #{receipt_id}</div>
+                            <hr class="divider">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <td class="item-name"><b>Наименование</b></td>
+                                        <td class="item-qty"><b>Кол</b></td>
+                                        <td class="item-price"><b>Сумма</b></td>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {items_html}
+                                </tbody>
+                            </table>
+                            <hr class="divider">
+                            <table>
+                                <tr class="total-row">
+                                    <td colspan="2">ИТОГО:</td>
+                                    <td class="item-price">{int(final_total)} тг</td>
+                                </tr>
+                                {discount_html}
+                                <tr class="total-row">
+                                    <td colspan="2">К ОПЛАТЕ:</td>
+                                    <td class="item-price">{int(final_total_after_discount)} тг</td>
+                                </tr>
+                            </table>
+                            <hr class="divider-double">
+                            <div class="thank-you">Спасибо за заказ! 🙏</div>
+                            <div class="footer">Приятного аппетита!</div>
+                            <div class="footer" style="font-size:10px; color:#999; margin-top:5px;">
+                                {payment_method} • {datetime.datetime.now().strftime('%H:%M')}
+                            </div>
                         </body>
                     </html>
                     """
 
-                    # 2. Скрипт-открывашка (заворачивает контент в окно и печатает)
-                    # Мы используем JSON.dumps, чтобы избежать ошибок с кавычками в тексте
-
+                    # Скрипт для печати
                     print_script = f"""
                     <script>
                         var content = {json.dumps(receipt_content)};
-                        var w = window.open('', '_blank', 'width=400,height=600');
+                        var w = window.open('', '_blank', 'width=400,height=600,menubar=no,toolbar=no,location=no,status=no,scrollbars=yes');
                         w.document.write(content);
                         w.document.close();
                         setTimeout(function() {{
                             w.print();
-                            w.close(); 
+                            setTimeout(function() {{
+                                w.close();
+                            }}, 1000);
                         }}, 500);
                     </script>
                     """
 
-                    # 3. Вывод на страницу
                     components.html(print_script, height=0)
 
-                    # 3. Сохраняем продажу в базу (как и было)
+                    # Сохраняем продажу в базу
                     for item in order["cart"]:
                         execute_query(
                             "INSERT INTO sales (date, dish, qty, total_price, receipt_id, discount_percent, payment_method) VALUES (%s, %s, %s, %s, %s, %s, %s)",
                             (today, item["name"], item["qty"], item["price"] * item["qty"], order["id"], disc,
                              pay_method)
                         )
-                        # ... (логика списания ингредиентов) ...
 
-                    # 4. Удаляем заказ и обновляем страницу
+                    # Удаляем заказ
                     execute_query("DELETE FROM active_orders WHERE order_id = %s", (order["id"],))
                     st.session_state.current_active_order_id = None
                     st.success("Заказ оплачен!")
