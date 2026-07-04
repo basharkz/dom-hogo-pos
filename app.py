@@ -13,7 +13,7 @@ st.set_page_config(
     page_title="POS-Терминал VOXYS",
     initial_sidebar_state="expanded"
 )
-
+st.image("voxys_foto_logo3.png", width=200)
 
 # 2. ИНИЦИАЛИЗАЦИЯ БАЗЫ ДАННЫХ
 @st.cache_resource
@@ -58,6 +58,7 @@ if not st.session_state.authenticated:
 # Боковая панель
 with st.sidebar:
     st.title(f"VOXYS | {st.session_state.user_role}")
+    st.image("voxys_foto_logo2.png", use_container_width=True)
 
 
 
