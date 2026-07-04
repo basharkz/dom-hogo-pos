@@ -1,5 +1,7 @@
 import streamlit as st
 import datetime
+import json
+import streamlit.components.v1 as components # <-- ОБЯЗАТЕЛЬНО добавить этот импорт
 from database.connection import execute_query
 from utils.printing import trigger_silent_print
 
@@ -75,17 +77,56 @@ def render_history_tab():
                 if user_role == "Администратор":
                     btn_col1, btn_col2 = st.columns(2)
                     with btn_col1:
-                        if st.button(f"🖨️ Распечатать №{r_id}", key=f"btn_p_{r_id}"):
-                            trigger_silent_print(f"Чек {r_id}", info["items"], {}, info["discount"], info["pay_method"],
-                                                 r_id)
-                            st.success("Отправлено!")
+                        # ИСПРАВЛЕНИЕ: здесь было order['id'], меняем на r_id
+                        if st.button(f"🖨 Печать чека №{r_id}", key=f"print_{r_id}"):
+                            # 1. Запрос данных
+                            sales_data = execute_query(
+                                "SELECT dish, qty, total_price FROM sales WHERE receipt_id = %s",
+                                (r_id,), fetch="all"
+                            )
+
+                            if not sales_data:
+                                st.error("Ошибка: Чек пустой!")
+                            else:
+                                # 2. Формируем HTML
+                                items_html = ""
+                                total = 0
+                                for row in sales_data:
+                                    dish, qty, price = row[0], row[1], row[2]
+                                    items_html += f"<tr><td>{dish}</td><td>x{qty}</td><td>{int(price)} тг</td></tr>"
+                                    total += price
+
+                                # 3. HTML шаблон (стили взяты из предыдущего успешного чека)
+                                receipt_content = f"""
+                                            <html>
+                                                <head><style>body {{ width: 280px; font-family: monospace; }} table {{ width: 100%; }}</style></head>
+                                                <body>
+                                                    <h2>WoJia HUOGUO</h2>
+                                                    <table>{items_html}</table>
+                                                    <hr>
+                                                    <h3>ИТОГО: {int(total)} тг</h3>
+                                                </body>
+                                            </html>
+                                            """
+
+                                # 4. Скрипт печати
+                                print_script = f"""
+                                            <script>
+                                                var content = {json.dumps(receipt_content)};
+                                                var w = window.open('', '_blank', 'width=400,height=600');
+                                                w.document.write(content);
+                                                w.document.close();
+                                                setTimeout(function() {{ w.print(); w.close(); }}, 500);
+                                            </script>
+                                            """
+                                components.html(print_script, height=0)
                     with btn_col2:
                         if st.button(f"❌ Удалить №{r_id}", key=f"btn_del_{r_id}", type="secondary"):
-                            # ИСПРАВЛЕННЫЙ ЗАПРОС (заменили ? на %s)
                             execute_query("DELETE FROM sales WHERE receipt_id = %s", (r_id,))
                             st.success(f"Чек {r_id} удален!")
                             st.rerun()
                 else:
+                    # Если не администратор, используем твою функцию trigger_silent_print
                     if st.button(f"🖨️ Распечатать №{r_id}", key=f"btn_p_{r_id}"):
                         trigger_silent_print(f"Чек {r_id}", info["items"], {}, info["discount"], info["pay_method"],
                                              r_id)
