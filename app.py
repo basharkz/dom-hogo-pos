@@ -8,7 +8,7 @@ from gui.menu_manager import render_menu_manager_tab
 from utils.printing import trigger_silent_print, trigger_z_report_print
 
 # 1. НАСТРОЙКА СТРАНИЦЫ (ДОЛЖНА БЫТЬ ПЕРВОЙ)
-st.image("voxys_foto_logo3.png", use_container_width=True)
+
 st.set_page_config(
     layout="wide",
     page_title="POS-Терминал VOXYS",

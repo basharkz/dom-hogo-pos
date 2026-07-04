@@ -119,13 +119,12 @@ def render_kassa_tab():
                         items_html += f"<tr><td>{item['name']}</td><td>x{item['qty']}</td><td>{int(item['price'] * item['qty'])} тг</td></tr>"
 
                     # Сам макет чека
-                    receipt_html = f"""
+                    receipt_content = f"""
                     <html>
                         <head>
                             <style>
                                 body {{ width: 280px; font-family: 'Courier New', monospace; margin: 0; padding: 5px; }}
                                 h2 {{ text-align: center; margin: 5px 0; }}
-                                .line {{ display: flex; justify-content: space-between; margin: 2px 0; }}
                                 table {{ width: 100%; border-collapse: collapse; }}
                                 td {{ padding: 2px; }}
                                 hr {{ border: 0; border-top: 1px dashed #000; }}
@@ -135,23 +134,32 @@ def render_kassa_tab():
                             <h2>WoJia HUOGUO</h2>
                             <p style="text-align: center;">{datetime.datetime.now().strftime('%d.%m.%Y %H:%M')}</p>
                             <hr>
-                            <table>
-                                {items_html}
-                            </table>
+                            <table>{items_html}</table>
                             <hr>
                             <h3 style="text-align: right;">ИТОГО: {int(final_total)} тг</h3>
                             <h4 style="text-align: center;">Приятного аппетита</h4>
-
-                            <script>
-                                // Ждем 300мс, чтобы HTML успел отрисоваться в браузере, и печатаем
-                                setTimeout(() => {{ window.print(); }}, 300);
-                            </script>
                         </body>
                     </html>
                     """
 
-                    # 2. Выводим этот HTML на страницу (скрыто)
-                    components.html(receipt_html, height=0)
+                    # 2. Скрипт-открывашка (заворачивает контент в окно и печатает)
+                    # Мы используем JSON.dumps, чтобы избежать ошибок с кавычками в тексте
+
+                    print_script = f"""
+                    <script>
+                        var content = {json.dumps(receipt_content)};
+                        var w = window.open('', '_blank', 'width=400,height=600');
+                        w.document.write(content);
+                        w.document.close();
+                        setTimeout(function() {{
+                            w.print();
+                            w.close(); 
+                        }}, 500);
+                    </script>
+                    """
+
+                    # 3. Вывод на страницу
+                    components.html(print_script, height=0)
 
                     # 3. Сохраняем продажу в базу (как и было)
                     for item in order["cart"]:
