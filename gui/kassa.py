@@ -120,22 +120,35 @@ def render_kassa_tab():
 
                     # Сам макет чека
                     receipt_html = f"""
-                                    <html>
-                                        <body style="font-family: Arial; width: 300px;">
-                                            <h2 style="text-align: center;">ДОМ ХОГО</h2>
-                                            <p style="text-align: center;">{datetime.datetime.now().strftime('%d.%m.%Y %H:%M')}</p>
-                                            <table style="width: 100%;">
-                                                {items_html}
-                                            </table>
-                                            <hr>
-                                            <h3 style="text-align: right;">ИТОГО: {int(final_total)} тг</h3>
-                                        </body>
-                                        <script>
-                                            // Ждем 300мс, чтобы HTML успел отрисоваться в браузере, и печатаем
-                                            setTimeout(() => {{ window.print(); }}, 300);
-                                        </script>
-                                    </html>
-                                    """
+                    <html>
+                        <head>
+                            <style>
+                                body {{ width: 280px; font-family: 'Courier New', monospace; margin: 0; padding: 5px; }}
+                                h2 {{ text-align: center; margin: 5px 0; }}
+                                .line {{ display: flex; justify-content: space-between; margin: 2px 0; }}
+                                table {{ width: 100%; border-collapse: collapse; }}
+                                td {{ padding: 2px; }}
+                                hr {{ border: 0; border-top: 1px dashed #000; }}
+                            </style>
+                        </head>
+                        <body>
+                            <h2>WoJia HUOGUO</h2>
+                            <p style="text-align: center;">{datetime.datetime.now().strftime('%d.%m.%Y %H:%M')}</p>
+                            <hr>
+                            <table>
+                                {items_html}
+                            </table>
+                            <hr>
+                            <h3 style="text-align: right;">ИТОГО: {int(final_total)} тг</h3>
+                            <h4 style="text-align: center;">Приятного аппетита</h4>
+
+                            <script>
+                                // Ждем 300мс, чтобы HTML успел отрисоваться в браузере, и печатаем
+                                setTimeout(() => {{ window.print(); }}, 300);
+                            </script>
+                        </body>
+                    </html>
+                    """
 
                     # 2. Выводим этот HTML на страницу (скрыто)
                     components.html(receipt_html, height=0)
