@@ -386,31 +386,27 @@ def render_kassa_tab():
 
         # ✅ ПРОСТАЯ КНОПКА ОТКРЫТИЯ ЧЕКА
         if st.button("🆕 Открыть Новый Чек", type="primary", use_container_width=True):
+            st.write("Кнопка нажата!")  # Проверка, доходит ли код сюда
+
             try:
-                st.write("🔄 Открываю новый чек...")  # Отладочное сообщение
+                new_id = int(datetime.datetime.now().strftime("%y%m%d%H%M%S"))
 
-                # Генерируем ID
-                new_id = get_unique_receipt_number()
-                st.write(f"✅ Сгенерирован ID: {new_id}")
+                # Добавим принудительный вывод параметров
+                st.write(f"Генерация ID: {new_id}")
 
-                # Вставляем в базу
                 execute_query(
                     "INSERT INTO active_orders (order_id, order_name, cart_json, discount_percent) VALUES (%s, %s, %s, %s)",
                     (new_id, f"Чек №{new_id}", json.dumps([]), 0.0)
                 )
-                st.write(f"✅ Чек сохранен в базу")
 
-                # Сохраняем в сессию
+                st.write("Запрос в БД выполнен.")
+
                 st.session_state.current_active_order_id = new_id
-                st.write(f"✅ ID сохранен в сессию: {new_id}")
-
-                st.success(f"✅ Чек №{new_id} открыт!")
                 st.rerun()
 
             except Exception as e:
-                st.error(f"❌ Ошибка при открытии чека: {e}")
-                import traceback
-                st.error(traceback.format_exc())
+                st.error(f"КРИТИЧЕСКАЯ ОШИБКА: {e}")
+                st.stop()  # Остановка, чтобы видеть ошибку
 
         st.write("---")
 
