@@ -16,17 +16,47 @@ def print_receipt_universal(html_content):
     html_bytes = html_content.encode('utf-8')
     b64_html = base64.b64encode(html_bytes).decode('utf-8')
 
+    # Используем components.html с высотой 0 для скрытого выполнения
     print_script = f"""
     <script>
     (function() {{
+        console.log('🖨️ Starting print process...');
+
         var userAgent = navigator.userAgent;
         var isEdge = userAgent.indexOf("Edg") > -1;
         var isFirefox = userAgent.indexOf("Firefox") > -1;
 
+        // Декодируем HTML из base64
         var htmlContent = atob('{b64_html}');
+
+        function printWithWindow() {{
+            try {{
+                console.log('🖨️ Trying window method...');
+                var w = window.open('', '_blank', 'width=400,height=600,menubar=no,toolbar=no,location=no,status=no,scrollbars=yes');
+                if (!w) {{
+                    console.error('❌ Window blocked!');
+                    alert('Пожалуйста, разрешите всплывающие окна для печати!');
+                    return false;
+                }}
+                w.document.write(htmlContent);
+                w.document.close();
+                setTimeout(function() {{
+                    w.focus();
+                    w.print();
+                    setTimeout(function() {{
+                        w.close();
+                    }}, 2000);
+                }}, 500);
+                return true;
+            }} catch(e) {{
+                console.error('❌ Window print error:', e);
+                return false;
+            }}
+        }}
 
         function printWithIframe() {{
             try {{
+                console.log('🖨️ Trying iframe method...');
                 var iframe = document.createElement('iframe');
                 iframe.style.position = 'fixed';
                 iframe.style.right = '0';
@@ -51,75 +81,31 @@ def print_receipt_universal(html_content):
                 }}, 500);
                 return true;
             }} catch(e) {{
-                console.error('Iframe print error:', e);
+                console.error('❌ Iframe print error:', e);
                 return false;
             }}
         }}
 
-        function printWithWindow() {{
-            try {{
-                var w = window.open('', '_blank', 'width=400,height=600,menubar=no,toolbar=no,location=no,status=no,scrollbars=yes');
-                if (!w) {{
-                    alert('Пожалуйста, разрешите всплывающие окна для печати!');
-                    return false;
-                }}
-                w.document.write(htmlContent);
-                w.document.close();
-                setTimeout(function() {{
-                    w.focus();
-                    w.print();
-                    setTimeout(function() {{
-                        w.close();
-                    }}, 2000);
-                }}, 500);
-                return true;
-            }} catch(e) {{
-                console.error('Window print error:', e);
-                return false;
-            }}
-        }}
-
-        function printWithBlob() {{
-            try {{
-                var blob = new Blob([htmlContent], {{type: 'text/html'}});
-                var url = URL.createObjectURL(blob);
-                var w = window.open(url, '_blank', 'width=400,height=600');
-                if (!w) {{
-                    alert('Пожалуйста, разрешите всплывающие окна для печати!');
-                    return false;
-                }}
-                setTimeout(function() {{
-                    w.focus();
-                    w.print();
-                    setTimeout(function() {{
-                        w.close();
-                        URL.revokeObjectURL(url);
-                    }}, 2000);
-                }}, 500);
-                return true;
-            }} catch(e) {{
-                console.error('Blob print error:', e);
-                return false;
-            }}
-        }}
+        // Пробуем разные методы
+        var printed = false;
 
         if (isEdge) {{
-            console.log('🖨️ Edge detected - using iframe method');
-            if (!printWithIframe()) {{
-                printWithBlob();
-            }}
+            console.log('🖨️ Edge detected');
+            printed = printWithIframe();
+            if (!printed) printed = printWithWindow();
         }} else if (isFirefox) {{
-            console.log('🖨️ Firefox detected - using window method');
-            if (!printWithWindow()) {{
-                printWithIframe();
-            }}
+            console.log('🖨️ Firefox detected');
+            printed = printWithWindow();
+            if (!printed) printed = printWithIframe();
         }} else {{
-            console.log('🖨️ Other browser detected - trying all methods');
-            if (!printWithWindow()) {{
-                if (!printWithIframe()) {{
-                    printWithBlob();
-                }}
-            }}
+            console.log('🖨️ Other browser detected');
+            printed = printWithWindow();
+            if (!printed) printed = printWithIframe();
+        }}
+
+        if (!printed) {{
+            console.error('❌ All print methods failed!');
+            alert('Не удалось открыть окно печати. Проверьте настройки браузера.');
         }}
     }})();
     </script>
@@ -131,9 +117,7 @@ def print_receipt_universal(html_content):
 def generate_receipt_html(receipt_data):
     """
     Генерирует HTML для чека 58мм x 210мм
-    🔴 СМЕНА: Все размеры можно менять в этом блоке
     """
-
     r_id = receipt_data.get('receipt_id', '')
     items = receipt_data.get('items', [])
     total = receipt_data.get('total', 0)
@@ -148,12 +132,11 @@ def generate_receipt_html(receipt_data):
         qty = item.get('qty', 1)
         price = item.get('price', 0)
 
-        # 🔴 СМЕНА: Размер шрифта товаров (сейчас 11px)
         items_html += f"""
             <tr>
                 <td class="item-name">{dish}</td>
                 <td class="item-qty">x{qty}</td>
-                <td class="item-price">{int(price)}</td>
+                <td class="item-price">{int(price)} тг</td>
             </tr>
         """
 
@@ -164,27 +147,25 @@ def generate_receipt_html(receipt_data):
         discount_html = f"""
             <tr class="discount-row">
                 <td colspan="2">Скидка ({discount_percent}%):</td>
-                <td class="item-price">-{int(discount_amount)}</td>
+                <td class="item-price">-{int(discount_amount)} тг</td>
             </tr>
         """
 
     final_total = total * (1 - discount_percent / 100)
 
-    # 🔴 СМЕНА: Основные параметры чека (ширина, отступы, шрифты)
     html = f"""
     <!DOCTYPE html>
     <html>
         <head>
             <meta charset="UTF-8">
+            <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
             <title>Чек #{r_id}</title>
             <style>
-                /* 🔴 СМЕНА: Ширина чека - сейчас 48mm (для 58mm бумаги) */
                 @page {{
                     size: 48mm auto;
                     margin: 2mm 3mm;
                 }}
 
-                /* 🔴 СМЕНА: Основные стили */
                 body {{ 
                     width: 48mm;
                     font-family: 'Courier New', 'Lucida Console', monospace;
@@ -195,7 +176,6 @@ def generate_receipt_html(receipt_data):
                     line-height: 1.3;
                 }}
 
-                /* 🔴 СМЕНА: Заголовок */
                 .header {{
                     text-align: center;
                     font-size: 14px;
@@ -218,7 +198,6 @@ def generate_receipt_html(receipt_data):
                     margin: 1px 0;
                 }}
 
-                /* 🔴 СМЕНА: Разделители */
                 .divider {{
                     border: 0;
                     border-top: 1px dashed #000;
@@ -231,7 +210,6 @@ def generate_receipt_html(receipt_data):
                     margin: 3px 0;
                 }}
 
-                /* 🔴 СМЕНА: Таблица товаров */
                 table {{ 
                     width: 100%; 
                     border-collapse: collapse;
@@ -261,7 +239,6 @@ def generate_receipt_html(receipt_data):
                     font-size: 10px;
                 }}
 
-                /* 🔴 СМЕНА: Итоговые строки */
                 .total-row {{
                     font-weight: bold;
                     font-size: 12px;
@@ -272,7 +249,6 @@ def generate_receipt_html(receipt_data):
                     color: #666;
                 }}
 
-                /* 🔴 СМЕНА: Подвал */
                 .footer {{
                     text-align: center;
                     font-size: 10px;
@@ -288,17 +264,6 @@ def generate_receipt_html(receipt_data):
                     padding: 0;
                 }}
 
-                .no-margin {{
-                    margin: 0;
-                    padding: 0;
-                }}
-
-                .compact {{
-                    margin: 0;
-                    padding: 0;
-                    line-height: 1.2;
-                }}
-
                 .item-name {{
                     word-wrap: break-word;
                     max-width: 30mm;
@@ -306,7 +271,6 @@ def generate_receipt_html(receipt_data):
             </style>
         </head>
         <body>
-            <!-- 🔴 СМЕНА: Шапка чека -->
             <div class="header">🏮 WoJia</div>
             <div class="header" style="font-size:12px;">HUOGUO</div>
             <div class="sub-header">{date_time}</div>
@@ -314,7 +278,6 @@ def generate_receipt_html(receipt_data):
 
             <hr class="divider">
 
-            <!-- 🔴 СМЕНА: Таблица товаров -->
             <table>
                 <thead>
                     <tr style="border-bottom: 1px solid #000;">
@@ -330,7 +293,6 @@ def generate_receipt_html(receipt_data):
 
             <hr class="divider">
 
-            <!-- 🔴 СМЕНА: Итоги -->
             <table>
                 <tr class="total-row">
                     <td colspan="2">ИТОГО:</td>
@@ -345,7 +307,6 @@ def generate_receipt_html(receipt_data):
 
             <hr class="divider-double">
 
-            <!-- 🔴 СМЕНА: Подвал -->
             <div class="thank-you">Спасибо! 🙏</div>
             <div class="footer">Приятного аппетита!</div>
             <div class="footer" style="font-size:9px; color:#999; margin-top:2px;">
@@ -377,23 +338,21 @@ def get_unique_receipt_number():
 
     # Извлекаем порядковый номер за день
     if max_id > 0:
-        # Получаем последние 4 цифры
         last_num = max_id % 10000
         new_num = last_num + 1
     else:
         new_num = 1
 
-    # Формируем новый ID: ГГММДД + 4-значный номер (с ведущими нулями)
+    # Формируем новый ID
     new_id = int(f"{today_str}{new_num:04d}")
 
-    # Проверяем, что такой ID еще не существует (на всякий случай)
+    # Проверяем, что такой ID еще не существует
     check_result = execute_query(
         "SELECT receipt_id FROM sales WHERE receipt_id = %s LIMIT 1",
         (new_id,),
         fetch="one"
     )
 
-    # Если вдруг такой ID уже есть (маловероятно), увеличиваем номер
     while check_result:
         new_num += 1
         new_id = int(f"{today_str}{new_num:04d}")
@@ -427,10 +386,7 @@ def render_kassa_tab():
         st.subheader("Активные чеки")
 
         if st.button("Открыть Новый Чек", type="primary", use_container_width=True):
-            # Генерируем уникальный номер чека
             new_id = get_unique_receipt_number()
-
-            # Сохраняем в активные заказы
             execute_query(
                 "INSERT INTO active_orders (order_id, order_name, cart_json, discount_percent) VALUES (%s, %s, %s, %s)",
                 (new_id, f"Чек №{new_id}", json.dumps([]), 0.0)
@@ -506,11 +462,9 @@ def render_kassa_tab():
                 if st.button("✅ Оплатить и закрыть", type="primary", use_container_width=True):
                     today = str(datetime.date.today())
 
-                    # ✅ Используем ID заказа как номер чека (уже уникальный)
                     receipt_id = order["id"]
                     discount_percent = disc
                     payment_method = pay_method
-                    final_total_after_discount = final_total * (1 - discount_percent / 100)
 
                     # Подготавливаем данные для чека
                     items_list = []

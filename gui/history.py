@@ -18,15 +18,42 @@ def print_receipt_universal(html_content):
     print_script = f"""
     <script>
     (function() {{
+        console.log('🖨️ Starting print process...');
+
         var userAgent = navigator.userAgent;
         var isEdge = userAgent.indexOf("Edg") > -1;
         var isFirefox = userAgent.indexOf("Firefox") > -1;
-        var isChrome = userAgent.indexOf("Chrome") > -1 && !isEdge;
 
         var htmlContent = atob('{b64_html}');
 
+        function printWithWindow() {{
+            try {{
+                console.log('🖨️ Trying window method...');
+                var w = window.open('', '_blank', 'width=400,height=600,menubar=no,toolbar=no,location=no,status=no,scrollbars=yes');
+                if (!w) {{
+                    console.error('❌ Window blocked!');
+                    alert('Пожалуйста, разрешите всплывающие окна для печати!');
+                    return false;
+                }}
+                w.document.write(htmlContent);
+                w.document.close();
+                setTimeout(function() {{
+                    w.focus();
+                    w.print();
+                    setTimeout(function() {{
+                        w.close();
+                    }}, 2000);
+                }}, 500);
+                return true;
+            }} catch(e) {{
+                console.error('❌ Window print error:', e);
+                return false;
+            }}
+        }}
+
         function printWithIframe() {{
             try {{
+                console.log('🖨️ Trying iframe method...');
                 var iframe = document.createElement('iframe');
                 iframe.style.position = 'fixed';
                 iframe.style.right = '0';
@@ -51,75 +78,30 @@ def print_receipt_universal(html_content):
                 }}, 500);
                 return true;
             }} catch(e) {{
-                console.error('Iframe print error:', e);
+                console.error('❌ Iframe print error:', e);
                 return false;
             }}
         }}
 
-        function printWithWindow() {{
-            try {{
-                var w = window.open('', '_blank', 'width=400,height=600,menubar=no,toolbar=no,location=no,status=no,scrollbars=yes');
-                if (!w) {{
-                    alert('Пожалуйста, разрешите всплывающие окна для печати!');
-                    return false;
-                }}
-                w.document.write(htmlContent);
-                w.document.close();
-                setTimeout(function() {{
-                    w.focus();
-                    w.print();
-                    setTimeout(function() {{
-                        w.close();
-                    }}, 2000);
-                }}, 500);
-                return true;
-            }} catch(e) {{
-                console.error('Window print error:', e);
-                return false;
-            }}
-        }}
-
-        function printWithBlob() {{
-            try {{
-                var blob = new Blob([htmlContent], {{type: 'text/html'}});
-                var url = URL.createObjectURL(blob);
-                var w = window.open(url, '_blank', 'width=400,height=600');
-                if (!w) {{
-                    alert('Пожалуйста, разрешите всплывающие окна для печати!');
-                    return false;
-                }}
-                setTimeout(function() {{
-                    w.focus();
-                    w.print();
-                    setTimeout(function() {{
-                        w.close();
-                        URL.revokeObjectURL(url);
-                    }}, 2000);
-                }}, 500);
-                return true;
-            }} catch(e) {{
-                console.error('Blob print error:', e);
-                return false;
-            }}
-        }}
+        var printed = false;
 
         if (isEdge) {{
-            console.log('🖨️ Edge detected - using iframe method');
-            if (!printWithIframe()) {{
-                printWithBlob();
-            }}
+            console.log('🖨️ Edge detected');
+            printed = printWithIframe();
+            if (!printed) printed = printWithWindow();
         }} else if (isFirefox) {{
-            console.log('🖨️ Firefox detected - using window method');
-            if (!printWithWindow()) {{
-                printWithIframe();
-            }}
+            console.log('🖨️ Firefox detected');
+            printed = printWithWindow();
+            if (!printed) printed = printWithIframe();
         }} else {{
-            console.log('🖨️ Other browser detected - trying all methods');
-            if (!printWithWindow()) {{
-                if (!printWithIframe()) {{
-                    printWithBlob();
-                }}
-            }}
+            console.log('🖨️ Other browser detected');
+            printed = printWithWindow();
+            if (!printed) printed = printWithIframe();
+        }}
+
+        if (!printed) {{
+            console.error('❌ All print methods failed!');
+            alert('Не удалось открыть окно печати. Проверьте настройки браузера.');
         }}
     }})();
     </script>
@@ -127,262 +109,21 @@ def print_receipt_universal(html_content):
     components.html(print_script, height=0)
 
 
-# ============ ГЕНЕРАЦИЯ ЧЕКА (ОПТИМИЗИРОВАН ДЛЯ 58mm) ============
-def generate_receipt_html(receipt_data):
-    """
-    Генерирует HTML для чека 58мм x 210мм
-    🔴 СМЕНА: Все размеры можно менять в этом блоке
-    """
-
-    r_id = receipt_data.get('receipt_id', '')
-    items = receipt_data.get('items', [])
-    total = receipt_data.get('total', 0)
-    discount_percent = receipt_data.get('discount', 0)
-    payment_method = receipt_data.get('payment_method', 'Наличные')
-    date_time = receipt_data.get('datetime', datetime.datetime.now().strftime('%d.%m.%Y %H:%M'))
-
-    # Формируем строки товаров
-    items_html = ""
-    for item in items:
-        dish = item.get('dish', '')
-        qty = item.get('qty', 1)
-        price = item.get('price', 0)
-
-        # 🔴 СМЕНА: Размер шрифта товаров (сейчас 11px)
-        items_html += f"""
-            <tr>
-                <td class="item-name">{dish}</td>
-                <td class="item-qty">x{qty}</td>
-                <td class="item-price">{int(price)}</td>
-            </tr>
-        """
-
-    # Скидка
-    discount_html = ""
-    if discount_percent > 0:
-        discount_amount = total * (discount_percent / 100)
-        discount_html = f"""
-            <tr class="discount-row">
-                <td colspan="2">Скидка ({discount_percent}%):</td>
-                <td class="item-price">-{int(discount_amount)}</td>
-            </tr>
-        """
-
-    final_total = total * (1 - discount_percent / 100)
-
-    # 🔴 СМЕНА: Основные параметры чека (ширина, отступы, шрифты)
-    html = f"""
-    <!DOCTYPE html>
-    <html>
-        <head>
-            <meta charset="UTF-8">
-            <title>Чек #{r_id}</title>
-            <style>
-                /* 🔴 СМЕНА: Ширина чека - сейчас 48mm (для 58mm бумаги) */
-                @page {{
-                    size: 48mm auto;
-                    margin: 2mm 3mm;
-                }}
-
-                /* 🔴 СМЕНА: Основные стили */
-                body {{ 
-                    width: 48mm;
-                    font-family: 'Courier New', 'Lucida Console', monospace;
-                    margin: 0;
-                    padding: 0;
-                    background: white;
-                    font-size: 11px;
-                    line-height: 1.3;
-                }}
-
-                /* 🔴 СМЕНА: Заголовок */
-                .header {{
-                    text-align: center;
-                    font-size: 14px;
-                    font-weight: bold;
-                    margin: 2px 0;
-                    padding: 0;
-                }}
-
-                .sub-header {{
-                    text-align: center;
-                    font-size: 11px;
-                    margin: 1px 0;
-                    padding: 0;
-                }}
-
-                .order-number {{
-                    text-align: center;
-                    font-size: 10px;
-                    color: #666;
-                    margin: 1px 0;
-                }}
-
-                /* 🔴 СМЕНА: Разделители */
-                .divider {{
-                    border: 0;
-                    border-top: 1px dashed #000;
-                    margin: 3px 0;
-                }}
-
-                .divider-double {{
-                    border: 0;
-                    border-top: 2px solid #000;
-                    margin: 3px 0;
-                }}
-
-                /* 🔴 СМЕНА: Таблица товаров */
-                table {{ 
-                    width: 100%; 
-                    border-collapse: collapse;
-                    font-size: 10px;
-                }}
-
-                td {{ 
-                    padding: 1px 0;
-                    vertical-align: top;
-                }}
-
-                .item-name {{
-                    width: 55%;
-                    padding-right: 3px;
-                    font-size: 10px;
-                }}
-
-                .item-qty {{
-                    width: 15%;
-                    text-align: center;
-                    font-size: 10px;
-                }}
-
-                .item-price {{
-                    width: 30%;
-                    text-align: right;
-                    font-size: 10px;
-                }}
-
-                /* 🔴 СМЕНА: Итоговые строки */
-                .total-row {{
-                    font-weight: bold;
-                    font-size: 12px;
-                }}
-
-                .discount-row {{
-                    font-size: 10px;
-                    color: #666;
-                }}
-
-                /* 🔴 СМЕНА: Подвал */
-                .footer {{
-                    text-align: center;
-                    font-size: 10px;
-                    margin: 3px 0;
-                    padding: 0;
-                }}
-
-                .thank-you {{
-                    text-align: center;
-                    font-size: 12px;
-                    font-weight: bold;
-                    margin: 5px 0;
-                    padding: 0;
-                }}
-
-                /* 🔴 СМЕНА: Убираем лишние отступы */
-                .no-margin {{
-                    margin: 0;
-                    padding: 0;
-                }}
-
-                /* 🔴 СМЕНА: Сжатые строки */
-                .compact {{
-                    margin: 0;
-                    padding: 0;
-                    line-height: 1.2;
-                }}
-
-                /* 🔴 СМЕНА: Максимальная высота для длинных названий */
-                .item-name {{
-                    word-wrap: break-word;
-                    max-width: 30mm;
-                }}
-            </style>
-        </head>
-        <body>
-            <!-- 🔴 СМЕНА: Шапка чека -->
-            <div class="header">🏮 WoJia</div>
-            <div class="header" style="font-size:12px;">HUOGUO</div>
-            <div class="sub-header">{date_time}</div>
-            <div class="order-number">Чек #{r_id}</div>
-
-            <hr class="divider">
-
-            <!-- 🔴 СМЕНА: Таблица товаров -->
-            <table>
-                <thead>
-                    <tr style="border-bottom: 1px solid #000;">
-                        <td class="item-name"><b>Наименование</b></td>
-                        <td class="item-qty"><b>Кол</b></td>
-                        <td class="item-price"><b>Сумма</b></td>
-                    </tr>
-                </thead>
-                <tbody>
-                    {items_html}
-                </tbody>
-            </table>
-
-            <hr class="divider">
-
-            <!-- 🔴 СМЕНА: Итоги -->
-            <table>
-                <tr class="total-row">
-                    <td colspan="2">ИТОГО:</td>
-                    <td class="item-price">{int(total)} тг</td>
-                </tr>
-                {discount_html}
-                <tr class="total-row" style="font-size:14px; border-top: 1px solid #000;">
-                    <td colspan="2">К ОПЛАТЕ:</td>
-                    <td class="item-price">{int(final_total)} тг</td>
-                </tr>
-            </table>
-
-            <hr class="divider-double">
-
-            <!-- 🔴 СМЕНА: Подвал -->
-            <div class="thank-you">Спасибо! 🙏</div>
-            <div class="footer">Приятного аппетита!</div>
-            <div class="footer" style="font-size:9px; color:#999; margin-top:2px;">
-                {payment_method} • {datetime.datetime.now().strftime('%H:%M')}
-            </div>
-
-            <!-- 🔴 СМЕНА: Дополнительная информация (опционально) -->
-            <div class="footer" style="font-size:8px; color:#aaa; margin-top:2px;">
-                www.wojia.kz
-            </div>
-        </body>
-    </html>
-    """
-    return html
-
-
-# ============ ГЕНЕРАЦИЯ Z-ОТЧЕТА (ОПТИМИЗИРОВАН) ============
+# ============ ГЕНЕРАЦИЯ HTML ДЛЯ Z-ОТЧЕТА ============
 def generate_z_report_html(z_data):
-    """Генерирует HTML для печати Z-отчета (оптимизирован для 58mm)"""
+    """Генерирует HTML для печати Z-отчета"""
 
-    # 🔴 СМЕНА: Сокращаем названия для экономии места
     items_html = ""
     if z_data.get("dishes"):
         for dish, qty in z_data["dishes"].items():
-            # 🔴 СМЕНА: Обрезаем длинные названия
             if len(dish) > 20:
                 dish = dish[:18] + ".."
-
             dish_price = z_data.get("dishes_price", {}).get(dish, 0)
             items_html += f"""
                 <tr>
                     <td class="item-name">{dish}</td>
                     <td class="item-qty">x{qty}</td>
-                    <td class="item-price">{int(dish_price)}</td>
+                    <td class="item-price">{int(dish_price)} тг</td>
                 </tr>
             """
     else:
@@ -392,7 +133,6 @@ def generate_z_report_html(z_data):
             </tr>
         """
 
-    # 🔴 СМЕНА: Сокращаем дату
     date_short = z_data.get('date', '').replace('.', '/')
 
     html = f"""
@@ -400,9 +140,9 @@ def generate_z_report_html(z_data):
     <html>
         <head>
             <meta charset="UTF-8">
+            <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
             <title>Z-Отчет</title>
             <style>
-                /* 🔴 СМЕНА: Настройки для 58mm */
                 @page {{
                     size: 48mm auto;
                     margin: 2mm 3mm;
@@ -540,15 +280,15 @@ def generate_z_report_html(z_data):
             <table>
                 <tr>
                     <td colspan="2">💵 Наличные:</td>
-                    <td class="item-price">{int(z_data.get('cash', 0))}</td>
+                    <td class="item-price">{int(z_data.get('cash', 0))} тг</td>
                 </tr>
                 <tr>
                     <td colspan="2">💳 Kaspi:</td>
-                    <td class="item-price">{int(z_data.get('kaspi', 0))}</td>
+                    <td class="item-price">{int(z_data.get('kaspi', 0))} тг</td>
                 </tr>
                 <tr class="total-row" style="border-top: 1px solid #000;">
                     <td colspan="2">💰 ИТОГО:</td>
-                    <td class="item-price">{int(z_data.get('total', 0))}</td>
+                    <td class="item-price">{int(z_data.get('total', 0))} тг</td>
                 </tr>
             </table>
 
@@ -562,7 +302,6 @@ def generate_z_report_html(z_data):
     return html
 
 
-# ============ ОСНОВНАЯ ФУНКЦИЯ ============
 def render_history_tab():
     st.subheader("📊 Аналитика и Финансовые показатели")
     today_date_str = str(datetime.date.today())
@@ -631,15 +370,15 @@ def render_history_tab():
                     st.warning("За выбранный период продаж нет!")
                     st.stop()
 
-                st.session_state.z_print_trigger = z_summary
-                st.rerun()
+                # ✅ ИСПРАВЛЕНИЕ: Сохраняем в сессию и НЕ делаем rerun
+                st.session_state.z_report_data = z_summary
 
             except Exception as e:
                 st.error(f"❌ Ошибка при формировании отчета: {e}")
 
-    # ============ ОБРАБОТКА ПЕЧАТИ Z-ОТЧЕТА ============
-    if "z_print_trigger" in st.session_state and st.session_state.z_print_trigger:
-        z_data = st.session_state.z_print_trigger
+    # ✅ ИСПРАВЛЕНИЕ: Показываем отчет, если данные есть в сессии
+    if "z_report_data" in st.session_state and st.session_state.z_report_data:
+        z_data = st.session_state.z_report_data
 
         with st.container():
             st.markdown("---")
@@ -676,11 +415,9 @@ def render_history_tab():
 
             with col_print2:
                 if st.button("❌ Закрыть отчет", type="secondary"):
-                    st.session_state.z_print_trigger = None
+                    # ✅ ИСПРАВЛЕНИЕ: Просто удаляем данные из сессии
+                    del st.session_state.z_report_data
                     st.rerun()
-
-        st.session_state.z_print_trigger = None
-        st.rerun()
 
     st.write("---")
 
@@ -763,7 +500,6 @@ def render_history_tab():
                             discount_percent = receipt_info[0] if receipt_info else 0
                             payment_method = receipt_info[1] if receipt_info else "Наличные"
 
-                            # Подготавливаем данные для чека
                             items_list = []
                             total = 0
                             for row in sales_data:
@@ -822,3 +558,203 @@ def render_history_tab():
 
                         receipt_html = generate_receipt_html(receipt_data)
                         print_receipt_universal(receipt_html)
+
+
+# ============ ФУНКЦИЯ ГЕНЕРАЦИИ ЧЕКА (для history) ============
+def generate_receipt_html(receipt_data):
+    """Генерирует HTML для чека 58мм x 210мм (копия функции из kassa_tab)"""
+    r_id = receipt_data.get('receipt_id', '')
+    items = receipt_data.get('items', [])
+    total = receipt_data.get('total', 0)
+    discount_percent = receipt_data.get('discount', 0)
+    payment_method = receipt_data.get('payment_method', 'Наличные')
+    date_time = receipt_data.get('datetime', datetime.datetime.now().strftime('%d.%m.%Y %H:%M'))
+
+    items_html = ""
+    for item in items:
+        dish = item.get('dish', '')
+        qty = item.get('qty', 1)
+        price = item.get('price', 0)
+        items_html += f"""
+            <tr>
+                <td class="item-name">{dish}</td>
+                <td class="item-qty">x{qty}</td>
+                <td class="item-price">{int(price)} тг</td>
+            </tr>
+        """
+
+    discount_html = ""
+    if discount_percent > 0:
+        discount_amount = total * (discount_percent / 100)
+        discount_html = f"""
+            <tr class="discount-row">
+                <td colspan="2">Скидка ({discount_percent}%):</td>
+                <td class="item-price">-{int(discount_amount)} тг</td>
+            </tr>
+        """
+
+    final_total = total * (1 - discount_percent / 100)
+
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+        <head>
+            <meta charset="UTF-8">
+            <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+            <title>Чек #{r_id}</title>
+            <style>
+                @page {{
+                    size: 48mm auto;
+                    margin: 2mm 3mm;
+                }}
+
+                body {{ 
+                    width: 48mm;
+                    font-family: 'Courier New', 'Lucida Console', monospace;
+                    margin: 0;
+                    padding: 0;
+                    background: white;
+                    font-size: 11px;
+                    line-height: 1.3;
+                }}
+
+                .header {{
+                    text-align: center;
+                    font-size: 14px;
+                    font-weight: bold;
+                    margin: 2px 0;
+                    padding: 0;
+                }}
+
+                .sub-header {{
+                    text-align: center;
+                    font-size: 11px;
+                    margin: 1px 0;
+                    padding: 0;
+                }}
+
+                .order-number {{
+                    text-align: center;
+                    font-size: 10px;
+                    color: #666;
+                    margin: 1px 0;
+                }}
+
+                .divider {{
+                    border: 0;
+                    border-top: 1px dashed #000;
+                    margin: 3px 0;
+                }}
+
+                .divider-double {{
+                    border: 0;
+                    border-top: 2px solid #000;
+                    margin: 3px 0;
+                }}
+
+                table {{ 
+                    width: 100%; 
+                    border-collapse: collapse;
+                    font-size: 10px;
+                }}
+
+                td {{ 
+                    padding: 1px 0;
+                    vertical-align: top;
+                }}
+
+                .item-name {{
+                    width: 55%;
+                    padding-right: 3px;
+                    font-size: 10px;
+                }}
+
+                .item-qty {{
+                    width: 15%;
+                    text-align: center;
+                    font-size: 10px;
+                }}
+
+                .item-price {{
+                    width: 30%;
+                    text-align: right;
+                    font-size: 10px;
+                }}
+
+                .total-row {{
+                    font-weight: bold;
+                    font-size: 12px;
+                }}
+
+                .discount-row {{
+                    font-size: 10px;
+                    color: #666;
+                }}
+
+                .footer {{
+                    text-align: center;
+                    font-size: 10px;
+                    margin: 3px 0;
+                    padding: 0;
+                }}
+
+                .thank-you {{
+                    text-align: center;
+                    font-size: 12px;
+                    font-weight: bold;
+                    margin: 5px 0;
+                    padding: 0;
+                }}
+
+                .item-name {{
+                    word-wrap: break-word;
+                    max-width: 30mm;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="header">🏮 WoJia</div>
+            <div class="header" style="font-size:12px;">HUOGUO</div>
+            <div class="sub-header">{date_time}</div>
+            <div class="order-number">Чек #{r_id}</div>
+
+            <hr class="divider">
+
+            <table>
+                <thead>
+                    <tr style="border-bottom: 1px solid #000;">
+                        <td class="item-name"><b>Наименование</b></td>
+                        <td class="item-qty"><b>Кол</b></td>
+                        <td class="item-price"><b>Сумма</b></td>
+                    </tr>
+                </thead>
+                <tbody>
+                    {items_html}
+                </tbody>
+            </table>
+
+            <hr class="divider">
+
+            <table>
+                <tr class="total-row">
+                    <td colspan="2">ИТОГО:</td>
+                    <td class="item-price">{int(total)} тг</td>
+                </tr>
+                {discount_html}
+                <tr class="total-row" style="font-size:14px; border-top: 1px solid #000;">
+                    <td colspan="2">К ОПЛАТЕ:</td>
+                    <td class="item-price">{int(final_total)} тг</td>
+                </tr>
+            </table>
+
+            <hr class="divider-double">
+
+            <div class="thank-you">Спасибо! 🙏</div>
+            <div class="footer">Приятного аппетита!</div>
+            <div class="footer" style="font-size:9px; color:#999; margin-top:2px;">
+                {payment_method} • {datetime.datetime.now().strftime('%H:%M')}
+            </div>
+        </body>
+    </html>
+    """
+    return html
