@@ -124,6 +124,7 @@ def generate_receipt_html(receipt_data):
 
 # ============ ГЛАВНАЯ ФУНКЦИЯ КАССЫ ============
 def render_kassa_tab():
+    
     st.subheader("🏪 Касса")
 
     # Инициализация сессии
