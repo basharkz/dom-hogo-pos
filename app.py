@@ -6,9 +6,23 @@ from gui.warehouse import render_warehouse_tab
 from gui.history import render_history_tab
 from gui.menu_manager import render_menu_manager_tab
 from utils.printing import trigger_silent_print, trigger_z_report_print
+
 import sys
 import io
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+import os
+
+# 🔥 БЕЗОПАСНАЯ УСТАНОВКА UTF-8
+try:
+    if hasattr(sys.stdout, 'buffer'):
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    if hasattr(sys.stderr, 'buffer'):
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+except Exception as e:
+    # Если не удалось перехватить stdout/stderr - просто игнорируем
+    print(f"⚠️ Не удалось установить UTF-8 для stdout: {e}")
+
+# ОСТАЛЬНОЙ КОД ВАШЕГО app.py
+# ...
 
 # 1. НАСТРОЙКА СТРАНИЦЫ (ДОЛЖНА БЫТЬ ПЕРВОЙ)
 

@@ -9,11 +9,9 @@ DATABASE_URL = os.environ.get("DATABASE_URL",
 def get_connection():
     """Подключение к базе с правильной кодировкой UTF-8"""
     try:
-        # 🔥 ВАЖНО: Добавляем параметры для правильной кодировки
         conn = psycopg2.connect(
             DATABASE_URL,
-            client_encoding='UTF8',
-            options='-c client_encoding=UTF8'
+            client_encoding='UTF8'
         )
         return conn
     except Exception as e:
@@ -32,9 +30,6 @@ def execute_query(query, params=None, fetch="none"):
             return None
 
         cursor = conn.cursor()
-
-        # 🔥 Устанавливаем кодировку для этого соединения
-        cursor.execute("SET client_encoding TO 'UTF8'")
 
         if params:
             cursor.execute(query, params)
@@ -62,7 +57,8 @@ def execute_query(query, params=None, fetch="none"):
                 pass
         print(f"❌ Ошибка базы данных: {e}")
         print(f"📝 Запрос: {query}")
-        print(f"📝 Параметры: {params}")
+        if params:
+            print(f"📝 Параметры: {params}")
         return None
 
     finally:
@@ -90,10 +86,7 @@ def init_db():
 
         cursor = conn.cursor()
 
-        # 🔥 Устанавливаем кодировку
-        cursor.execute("SET client_encoding TO 'UTF8'")
-
-        # Создаем таблицы с UTF8
+        # Создаем таблицы
         cursor.execute('''CREATE TABLE IF NOT EXISTS inventory (
             date TEXT, 
             item TEXT, 
@@ -145,7 +138,7 @@ def init_db():
                 cursor.execute("INSERT INTO categories (cat_name) VALUES (%s) ON CONFLICT (cat_name) DO NOTHING", cat)
 
         conn.commit()
-        print("✅ База данных инициализирована с кодировкой UTF-8")
+        print("✅ База данных инициализирована")
 
     except Exception as e:
         print(f"❌ Ошибка инициализации БД: {e}")

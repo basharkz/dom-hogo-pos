@@ -5,13 +5,7 @@ import streamlit.components.v1 as components
 from database.connection import execute_query
 import base64
 import time
-import sys
-import io
 
-# 🔥 Принудительно устанавливаем UTF-8 для всего приложения
-if sys.stdout.encoding != 'utf-8':
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 
 # ============ УНИВЕРСАЛЬНАЯ ФУНКЦИЯ ПЕЧАТИ ============
