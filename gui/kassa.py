@@ -380,17 +380,32 @@ def render_kassa_tab():
         # Кнопка создания чека
         if st.button("🆕 Открыть Новый Чек", type="primary", use_container_width=True):
             try:
-                # Генерируем ID как строку
                 new_id = datetime.datetime.now().strftime("%y%m%d%H%M%S")
+
+                # ДИАГНОСТИКА: выводим, что именно пытаемся отправить
+                st.write(f"DEBUG: Попытка вставки ID={new_id}")
+
+                # Важно: убедимся, что cart_json - это строка
+                cart_empty = json.dumps([])
 
                 execute_query(
                     "INSERT INTO active_orders (order_id, order_name, cart_json, discount_percent) VALUES (%s, %s, %s, %s)",
-                    (new_id, f"Чек №{new_id}", json.dumps([]), 0.0)
+                    (new_id, f"Чек №{new_id}", cart_empty, 0.0)
                 )
-                st.session_state.current_active_order_id = new_id
-                st.rerun()
+
+                # Проверка: сразу попробуем достать этот ID из базы
+                check_select = execute_query("SELECT order_id FROM active_orders WHERE order_id = %s", (new_id,),
+                                             fetch="one")
+
+                if check_select:
+                    st.success("✅ Успешно добавлено и считано!")
+                    st.session_state.current_active_order_id = new_id
+                    st.rerun()
+                else:
+                    st.error("❌ Запись создана, но при чтении пусто! Проверьте транзакции БД.")
+
             except Exception as e:
-                st.error(f"Ошибка создания: {e}")
+                st.error(f"❌ КРИТИЧЕСКАЯ ОШИБКА БД: {e}")
 
         st.write("---")
 
