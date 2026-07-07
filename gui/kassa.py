@@ -11,7 +11,7 @@ import time
 def print_receipt_universal(html_content):
     html_bytes = html_content.encode('utf-8')
     b64_html = base64.b64encode(html_bytes).decode('utf-8')
-    
+
     print_script = f"""
     <script>
     (function() {{
@@ -130,7 +130,7 @@ def render_kassa_tab():
     if "current_active_order_id" not in st.session_state:
         st.session_state.current_active_order_id = None
 
-    # СОЗДАЕМ ТАБЛИЦЫ (ЕСЛИ НЕТ)
+    # СОЗДАЕМ ТАБЛИЦУ (ДЛЯ POSTGRESQL)
     try:
         execute_query("""
             CREATE TABLE IF NOT EXISTS active_orders (
@@ -140,8 +140,8 @@ def render_kassa_tab():
                 discount_percent REAL DEFAULT 0.0
             )
         """)
-    except:
-        pass
+    except Exception as e:
+        st.error(f"❌ Ошибка создания таблицы: {e}")
 
     col_left, col_right = st.columns([0.6, 0.4])
 
@@ -155,7 +155,8 @@ def render_kassa_tab():
                 if cat not in menu:
                     menu[cat] = {}
                 menu[cat][name] = price
-    except:
+    except Exception as e:
+        st.error(f"❌ Ошибка загрузки меню: {e}")
         menu = {}
 
     # ЗАГРУЗКА АКТИВНЫХ ЗАКАЗОВ
@@ -175,13 +176,18 @@ def render_kassa_tab():
                         "cart": cart,
                         "discount": float(row[3]) if row[3] else 0.0
                     })
-                except:
-                    pass
-    except:
+                except Exception as e:
+                    print(f"Ошибка парсинга: {e}")
+    except Exception as e:
+        st.error(f"❌ Ошибка загрузки заказов: {e}")
         active_orders = []
 
     with col_left:
         st.subheader("📋 Активные чеки")
+
+        # ДИАГНОСТИКА
+        st.write(f"📌 Текущий ID в сессии: {st.session_state.current_active_order_id}")
+        st.write(f"📌 Активных заказов в БД: {len(active_orders)}")
 
         # ===== КНОПКА ОТКРЫТИЯ ЧЕКА =====
         if st.button("🆕 Открыть Новый Чек", type="primary", use_container_width=True):
@@ -190,13 +196,19 @@ def render_kassa_tab():
 
                 # Получаем максимальный ID
                 max_row = execute_query("SELECT MAX(order_id) FROM active_orders", fetch="one")
+
                 if max_row and max_row[0]:
                     # Берем последние 4 цифры и добавляем 1
-                    last_num = int(str(max_row[0])[-4:]) + 1
+                    try:
+                        last_num = int(str(max_row[0])[-4:]) + 1
+                    except:
+                        last_num = 1
                 else:
                     last_num = 1
 
                 new_id = f"{today}{last_num:04d}"
+
+                st.info(f"🔄 Создается чек №{new_id}...")
 
                 # Вставляем в БД
                 execute_query(
@@ -204,12 +216,24 @@ def render_kassa_tab():
                     (new_id, f"Чек №{new_id}", json.dumps([]), 0.0)
                 )
 
-                st.session_state.current_active_order_id = new_id
-                st.success(f"✅ Чек №{new_id} открыт!")
-                st.rerun()
+                # Проверяем, что запись создалась
+                check = execute_query(
+                    "SELECT order_id FROM active_orders WHERE order_id = %s",
+                    (new_id,),
+                    fetch="one"
+                )
+
+                if check and check[0]:
+                    st.session_state.current_active_order_id = new_id
+                    st.success(f"✅ Чек №{new_id} открыт!")
+                    st.rerun()
+                else:
+                    st.error("❌ Чек не сохранился в БД!")
 
             except Exception as e:
                 st.error(f"❌ Ошибка: {e}")
+                import traceback
+                st.code(traceback.format_exc())
 
         st.write("---")
 
@@ -261,8 +285,8 @@ def render_kassa_tab():
                                             (json.dumps(cart), discount, st.session_state.current_active_order_id)
                                         )
                                         st.rerun()
-                                    except:
-                                        pass
+                                    except Exception as e:
+                                        st.error(f"Ошибка: {e}")
                             else:
                                 st.warning("⚠️ Сначала откройте чек!")
 
@@ -340,7 +364,8 @@ def render_kassa_tab():
                                     "items": items_list,
                                     "total": total,
                                     "discount": disc,
-                                    "payment_method": pay_method
+                                    "payment_method": pay_method,
+                                    "datetime": datetime.datetime.now().strftime('%d.%m.%Y %H:%M')
                                 }
                                 receipt_html = generate_receipt_html(receipt_data)
                                 print_receipt_universal(receipt_html)
@@ -354,162 +379,15 @@ def render_kassa_tab():
 
                             except Exception as e:
                                 st.error(f"❌ Ошибка: {e}")
+                                import traceback
+                                st.code(traceback.format_exc())
                 except Exception as e:
                     st.error(f"❌ Ошибка загрузки: {e}")
                     st.session_state.current_active_order_id = None
                     st.rerun()
             else:
-                st.warning("Чек не найден")
+                st.warning("Чек не найден в БД")
                 st.session_state.current_active_order_id = None
                 st.rerun()
         else:
             st.info("👈 Выберите или создайте чек")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
