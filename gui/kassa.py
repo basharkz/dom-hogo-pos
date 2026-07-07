@@ -376,21 +376,26 @@ def render_kassa_tab():
 
         # ✅ УПРОЩЕННАЯ КНОПКА ОТКРЫТИЯ ЧЕКА
         if st.button("🆕 Открыть Новый Чек", type="primary", use_container_width=True):
-            try:
-                # Генерируем уникальный ID
-                new_id = get_unique_receipt_number()
+            # 1. Генерируем ID здесь же, без сложных проверок (или используем текущее время как ID)
+            new_id = int(datetime.datetime.now().strftime("%y%m%d%H%M%S"))
 
-                # Вставляем в базу
+            try:
+                # 2. Прямая вставка
                 execute_query(
                     "INSERT INTO active_orders (order_id, order_name, cart_json, discount_percent) VALUES (%s, %s, %s, %s)",
                     (new_id, f"Чек №{new_id}", json.dumps([]), 0.0)
                 )
 
-                # Сохраняем в сессию
+                # 3. Принудительное обновление состояния
                 st.session_state.current_active_order_id = new_id
 
-                st.success(f"✅ Чек №{new_id} открыт!")
+                # 4. Небольшая пауза, чтобы база точно успела обработать запись
+                time.sleep(0.5)
+
                 st.rerun()
+
+            except Exception as e:
+                st.error(f"Ошибка БД: {e}")
 
             except Exception as e:
                 st.error(f"❌ Ошибка при открытии чека: {e}")
