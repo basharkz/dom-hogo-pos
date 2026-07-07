@@ -5,6 +5,13 @@ import streamlit.components.v1 as components
 from database.connection import execute_query
 import base64
 import time
+import sys
+import io
+
+# 🔥 Принудительно устанавливаем UTF-8 для всего приложения
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 
 # ============ УНИВЕРСАЛЬНАЯ ФУНКЦИЯ ПЕЧАТИ ============
@@ -162,9 +169,14 @@ def generate_receipt_html(receipt_data):
 
     items_html = ""
     for item in items:
-        dish = item.get('dish', '')
+        # 🔥 ВАЖНО: Принудительно преобразуем в строку и экранируем
+        dish = str(item.get('dish', ''))
         qty = item.get('qty', 1)
         price = item.get('price', 0)
+
+        # Экранируем спецсимволы для HTML
+        dish = dish.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
+
         items_html += f"""
             <tr>
                 <td class="item-name">{dish}</td>
@@ -185,72 +197,71 @@ def generate_receipt_html(receipt_data):
 
     final_total = total * (1 - discount_percent / 100)
 
-    # 🔥 ВАЖНО: Добавлена правильная кодировка в HTML
-    return f"""
-    <!DOCTYPE html>
-    <html>
-        <head>
-            <meta charset="UTF-8">
-            <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-            <meta http-equiv="Content-Language" content="ru">
-            <title>Чек #{r_id}</title>
-            <style>
-                @page {{ size: 48mm auto; margin: 2mm 3mm; }}
-                body {{ 
-                    width: 48mm; 
-                    font-family: 'Courier New', 'Lucida Console', monospace; 
-                    margin: 0; 
-                    padding: 0; 
-                    font-size: 11px;
-                    -webkit-font-smoothing: antialiased;
-                }}
-                .header {{ text-align: center; font-size: 14px; font-weight: bold; }}
-                .sub-header {{ text-align: center; font-size: 11px; }}
-                .order-number {{ text-align: center; font-size: 10px; color: #666; }}
-                .divider {{ border: 0; border-top: 1px dashed #000; margin: 3px 0; }}
-                .divider-double {{ border: 0; border-top: 2px solid #000; margin: 3px 0; }}
-                table {{ width: 100%; border-collapse: collapse; font-size: 10px; }}
-                td {{ padding: 1px 0; }}
-                .item-name {{ width: 55%; }}
-                .item-qty {{ width: 15%; text-align: center; }}
-                .item-price {{ width: 30%; text-align: right; }}
-                .total-row {{ font-weight: bold; font-size: 12px; }}
-                .discount-row {{ font-size: 10px; color: #666; }}
-                .footer {{ text-align: center; font-size: 10px; margin: 3px 0; }}
-                .thank-you {{ text-align: center; font-size: 12px; font-weight: bold; margin: 5px 0; }}
-            </style>
-        </head>
-        <body>
-            <div class="header">🏮 WoJia HUOGUO</div>
-            <div class="sub-header">{date_time}</div>
-            <div class="order-number">Чек #{r_id}</div>
-            <hr class="divider">
-            <table>
-                <tr style="border-bottom: 1px solid #000;">
-                    <td class="item-name"><b>Наименование</b></td>
-                    <td class="item-qty"><b>Кол</b></td>
-                    <td class="item-price"><b>Сумма</b></td>
-                </tr>
-                {items_html}
-            </table>
-            <hr class="divider">
-            <table>
-                <tr class="total-row"><td colspan="2">ИТОГО:</td><td class="item-price">{int(total)} тг</td></tr>
-                {discount_html}
-                <tr class="total-row" style="border-top:1px solid #000; font-size:14px;">
-                    <td colspan="2">К ОПЛАТЕ:</td>
-                    <td class="item-price">{int(final_total)} тг</td>
-                </tr>
-            </table>
-            <hr class="divider-double">
-            <div class="thank-you">Спасибо! 🙏</div>
-            <div class="footer">Приятного аппетита!</div>
-            <div class="footer" style="font-size:9px; color:#999; margin-top:2px;">
-                {payment_method} • {datetime.datetime.now().strftime('%H:%M')}
-            </div>
-        </body>
-    </html>
-    """
+    # 🔥 ВАЖНО: Явно указываем кодировку
+    html = f"""<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+        <meta http-equiv="Content-Language" content="ru">
+        <title>Чек #{r_id}</title>
+        <style>
+            @page {{ size: 48mm auto; margin: 2mm 3mm; }}
+            body {{ 
+                width: 48mm; 
+                font-family: 'Courier New', 'Lucida Console', 'Monaco', monospace; 
+                margin: 0; 
+                padding: 0; 
+                font-size: 11px;
+            }}
+            .header {{ text-align: center; font-size: 14px; font-weight: bold; }}
+            .sub-header {{ text-align: center; font-size: 11px; }}
+            .order-number {{ text-align: center; font-size: 10px; color: #666; }}
+            .divider {{ border: 0; border-top: 1px dashed #000; margin: 3px 0; }}
+            .divider-double {{ border: 0; border-top: 2px solid #000; margin: 3px 0; }}
+            table {{ width: 100%%; border-collapse: collapse; font-size: 10px; }}
+            td {{ padding: 1px 0; }}
+            .item-name {{ width: 55%%; }}
+            .item-qty {{ width: 15%%; text-align: center; }}
+            .item-price {{ width: 30%%; text-align: right; }}
+            .total-row {{ font-weight: bold; font-size: 12px; }}
+            .discount-row {{ font-size: 10px; color: #666; }}
+            .footer {{ text-align: center; font-size: 10px; margin: 3px 0; }}
+            .thank-you {{ text-align: center; font-size: 12px; font-weight: bold; margin: 5px 0; }}
+        </style>
+    </head>
+    <body>
+        <div class="header">🏮 WoJia HUOGUO</div>
+        <div class="sub-header">{date_time}</div>
+        <div class="order-number">Чек #{r_id}</div>
+        <hr class="divider">
+        <table>
+            <tr style="border-bottom: 1px solid #000;">
+                <td class="item-name"><b>Наименование</b></td>
+                <td class="item-qty"><b>Кол</b></td>
+                <td class="item-price"><b>Сумма</b></td>
+            </tr>
+            {items_html}
+        </table>
+        <hr class="divider">
+        <table>
+            <tr class="total-row"><td colspan="2">ИТОГО:</td><td class="item-price">{int(total)} тг</td></tr>
+            {discount_html}
+            <tr class="total-row" style="border-top:1px solid #000; font-size:14px;">
+                <td colspan="2">К ОПЛАТЕ:</td>
+                <td class="item-price">{int(final_total)} тг</td>
+            </tr>
+        </table>
+        <hr class="divider-double">
+        <div class="thank-you">Спасибо! 🙏</div>
+        <div class="footer">Приятного аппетита!</div>
+        <div class="footer" style="font-size:9px; color:#999; margin-top:2px;">
+            {payment_method} • {datetime.datetime.now().strftime('%H:%M')}
+        </div>
+    </body>
+</html>"""
+
+    return html
 
 
 # ============ ФУНКЦИЯ ДЛЯ ПОЛУЧЕНИЯ УНИКАЛЬНОГО НОМЕРА ЧЕКА ============
