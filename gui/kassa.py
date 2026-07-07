@@ -16,7 +16,6 @@ def print_receipt_universal(html_content):
     html_bytes = html_content.encode('utf-8')
     b64_html = base64.b64encode(html_bytes).decode('utf-8')
 
-    # Используем components.html с высотой 0 для скрытого выполнения
     print_script = f"""
     <script>
     (function() {{
@@ -26,7 +25,6 @@ def print_receipt_universal(html_content):
         var isEdge = userAgent.indexOf("Edg") > -1;
         var isFirefox = userAgent.indexOf("Firefox") > -1;
 
-        // Декодируем HTML из base64
         var htmlContent = atob('{b64_html}');
 
         function printWithWindow() {{
@@ -86,7 +84,6 @@ def print_receipt_universal(html_content):
             }}
         }}
 
-        // Пробуем разные методы
         var printed = false;
 
         if (isEdge) {{
@@ -334,26 +331,32 @@ def get_unique_receipt_number():
         fetch="one"
     )
 
-    max_id = result[0] if result and result[0] else 0
+    # ✅ ИСПРАВЛЕНИЕ: Преобразуем в int, если результат не None
+    if result and result[0] is not None:
+        max_id = int(result[0])  # Преобразуем в int
+    else:
+        max_id = 0
 
     # Извлекаем порядковый номер за день
     if max_id > 0:
+        # Получаем последние 4 цифры
         last_num = max_id % 10000
         new_num = last_num + 1
     else:
         new_num = 1
 
-    # Формируем новый ID
+    # Формируем новый ID: ГГММДД + 4-значный номер (с ведущими нулями)
     new_id = int(f"{today_str}{new_num:04d}")
 
-    # Проверяем, что такой ID еще не существует
+    # Проверяем, что такой ID еще не существует (на всякий случай)
     check_result = execute_query(
         "SELECT receipt_id FROM sales WHERE receipt_id = %s LIMIT 1",
         (new_id,),
         fetch="one"
     )
 
-    while check_result:
+    # Если вдруг такой ID уже есть (маловероятно), увеличиваем номер
+    while check_result and check_result[0] is not None:
         new_num += 1
         new_id = int(f"{today_str}{new_num:04d}")
         check_result = execute_query(
