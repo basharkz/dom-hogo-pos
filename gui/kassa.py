@@ -7,31 +7,145 @@ import base64
 import time
 
 
-# ============ ПРОСТАЯ ФУНКЦИЯ ПЕЧАТИ ============
+# ============ УНИВЕРСАЛЬНАЯ ФУНКЦИЯ ПЕЧАТИ ============
 def print_receipt_universal(html_content):
-    b64_html = base64.b64encode(html_content.encode('utf-8')).decode('utf-8')
+    """
+    Универсальная функция печати для всех браузеров
+    """
+    html_bytes = html_content.encode('utf-8')
+    b64_html = base64.b64encode(html_bytes).decode('utf-8')
 
     print_script = f"""
-        <script>
-        (function() {{
-            // Открываем окно напрямую через Data URI
-            var w = window.open('data:text/html;base64,{b64_html}', '_blank', 'width=400,height=600');
+    <script>
+    (function() {{
+        console.log('🖨️ Запуск печати...');
 
-            if (!w) {{
-                alert('Разрешите всплывающие окна!');
-                return;
-            }}
+        var htmlContent = atob('{b64_html}');
+        var isEdge = navigator.userAgent.indexOf("Edg") > -1;
+        var isFirefox = navigator.userAgent.indexOf("Firefox") > -1;
 
-            // Ждем загрузки и печатаем
-            w.onload = function() {{
+        function printWithWindow() {{
+            try {{
+                console.log('🖨️ Метод window...');
+                var w = window.open('', '_blank', 'width=400,height=600,menubar=no,toolbar=no,location=no,status=no,scrollbars=yes');
+                if (!w) {{
+                    console.error('❌ Окно заблокировано!');
+                    alert('Пожалуйста, разрешите всплывающие окна для печати!');
+                    return false;
+                }}
+                w.document.write(htmlContent);
+                w.document.close();
+
                 setTimeout(function() {{
-                    w.print();
-                    setTimeout(function() {{ w.close(); }}, 1000);
-                }}, 500);
-            }};
-        }})();
-        </script>
-        """
+                    try {{
+                        w.focus();
+                        w.print();
+                        setTimeout(function() {{
+                            try {{ w.close(); }} catch(e) {{}}
+                        }}, 3000);
+                    }} catch(e) {{
+                        console.error('Ошибка печати:', e);
+                    }}
+                }}, 1000);
+                return true;
+            }} catch(e) {{
+                console.error('❌ Ошибка window:', e);
+                return false;
+            }}
+        }}
+
+        function printWithIframe() {{
+            try {{
+                console.log('🖨️ Метод iframe...');
+                var iframe = document.createElement('iframe');
+                iframe.style.position = 'fixed';
+                iframe.style.right = '-9999px';
+                iframe.style.top = '0';
+                iframe.style.width = '400px';
+                iframe.style.height = '600px';
+                iframe.style.border = 'none';
+                document.body.appendChild(iframe);
+
+                var iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                iframeDoc.open();
+                iframeDoc.write(htmlContent);
+                iframeDoc.close();
+
+                setTimeout(function() {{
+                    try {{
+                        iframe.contentWindow.focus();
+                        iframe.contentWindow.print();
+                        setTimeout(function() {{
+                            try {{ document.body.removeChild(iframe); }} catch(e) {{}}
+                        }}, 3000);
+                    }} catch(e) {{
+                        console.error('Ошибка печати в iframe:', e);
+                    }}
+                }}, 1000);
+                return true;
+            }} catch(e) {{
+                console.error('❌ Ошибка iframe:', e);
+                return false;
+            }}
+        }}
+
+        function printWithBlob() {{
+            try {{
+                console.log('🖨️ Метод Blob...');
+                var blob = new Blob([htmlContent], {{type: 'text/html'}});
+                var url = URL.createObjectURL(blob);
+                var w = window.open(url, '_blank', 'width=400,height=600');
+                if (!w) {{
+                    console.error('❌ Окно заблокировано!');
+                    return false;
+                }}
+                setTimeout(function() {{
+                    try {{
+                        w.focus();
+                        w.print();
+                        setTimeout(function() {{
+                            try {{ 
+                                w.close();
+                                URL.revokeObjectURL(url);
+                            }} catch(e) {{}}
+                        }}, 3000);
+                    }} catch(e) {{
+                        console.error('Ошибка печати:', e);
+                    }}
+                }}, 1000);
+                return true;
+            }} catch(e) {{
+                console.error('❌ Ошибка Blob:', e);
+                return false;
+            }}
+        }}
+
+        var success = false;
+
+        if (isEdge) {{
+            console.log('🖨️ Edge - пробуем iframe');
+            success = printWithIframe();
+            if (!success) success = printWithBlob();
+            if (!success) success = printWithWindow();
+        }} else if (isFirefox) {{
+            console.log('🖨️ Firefox - пробуем window');
+            success = printWithWindow();
+            if (!success) success = printWithIframe();
+            if (!success) success = printWithBlob();
+        }} else {{
+            console.log('🖨️ Другой браузер - пробуем window');
+            success = printWithWindow();
+            if (!success) success = printWithIframe();
+            if (!success) success = printWithBlob();
+        }}
+
+        if (!success) {{
+            console.error('❌ Все методы печати не сработали!');
+            alert('Не удалось открыть окно печати.\\nПроверьте настройки браузера и разрешите всплывающие окна.');
+        }}
+    }})();
+    </script>
+    """
     components.html(print_script, height=0)
 
 
@@ -124,9 +238,60 @@ def generate_receipt_html(receipt_data):
     """
 
 
+# ============ ФУНКЦИЯ ДЛЯ ПОЛУЧЕНИЯ УНИКАЛЬНОГО НОМЕРА ЧЕКА ============
+def get_unique_receipt_number():
+    """Генерирует уникальный номер чека на основе истории продаж"""
+    today = datetime.date.today()
+    today_str = today.strftime("%y%m%d")
+
+    # Получаем максимальный ID из таблицы sales (история)
+    try:
+        max_row = execute_query(
+            "SELECT MAX(receipt_id) FROM sales WHERE receipt_id LIKE %s",
+            (f"{today_str}%",),
+            fetch="one"
+        )
+
+        if max_row and max_row[0]:
+            # Берем последние 4 цифры и добавляем 1
+            try:
+                last_num = int(str(max_row[0])[-4:]) + 1
+            except:
+                last_num = 1
+        else:
+            # Если сегодня нет продаж, начинаем с 1
+            last_num = 1
+
+    except Exception as e:
+        print(f"Ошибка получения MAX ID: {e}")
+        last_num = 1
+
+    # Формируем новый ID
+    new_id = f"{today_str}{last_num:04d}"
+
+    # Дополнительная проверка: если такой ID есть в active_orders (маловероятно)
+    try:
+        check = execute_query(
+            "SELECT order_id FROM active_orders WHERE order_id = %s",
+            (new_id,),
+            fetch="one"
+        )
+        while check and check[0]:
+            last_num += 1
+            new_id = f"{today_str}{last_num:04d}"
+            check = execute_query(
+                "SELECT order_id FROM active_orders WHERE order_id = %s",
+                (new_id,),
+                fetch="one"
+            )
+    except:
+        pass
+
+    return new_id
+
+
 # ============ ГЛАВНАЯ ФУНКЦИЯ КАССЫ ============
 def render_kassa_tab():
-
     st.subheader("🏪 Касса")
 
     # Инициализация сессии
@@ -195,21 +360,8 @@ def render_kassa_tab():
         # ===== КНОПКА ОТКРЫТИЯ ЧЕКА =====
         if st.button("🆕 Открыть Новый Чек", type="primary", use_container_width=True):
             try:
-                today = datetime.date.today().strftime("%y%m%d")
-
-                # Получаем максимальный ID
-                max_row = execute_query("SELECT MAX(order_id) FROM active_orders", fetch="one")
-
-                if max_row and max_row[0]:
-                    # Берем последние 4 цифры и добавляем 1
-                    try:
-                        last_num = int(str(max_row[0])[-4:]) + 1
-                    except:
-                        last_num = 1
-                else:
-                    last_num = 1
-
-                new_id = f"{today}{last_num:04d}"
+                # Используем исправленную функцию
+                new_id = get_unique_receipt_number()
 
                 st.info(f"🔄 Создается чек №{new_id}...")
 
@@ -334,7 +486,7 @@ def render_kassa_tab():
                     st.write("---")
 
                     disc = st.number_input("Скидка %", min_value=0.0, max_value=100.0,
-                                         value=discount, step=5.0)
+                                           value=discount, step=5.0)
                     if disc != discount:
                         execute_query(
                             "UPDATE active_orders SET discount_percent = %s WHERE order_id = %s",
@@ -361,7 +513,9 @@ def render_kassa_tab():
                                     )
 
                                 # Печатаем чек
-                                items_list = [{"dish": item["name"], "qty": item["qty"], "price": item["price"] * item["qty"]} for item in cart]
+                                items_list = [
+                                    {"dish": item["name"], "qty": item["qty"], "price": item["price"] * item["qty"]} for
+                                    item in cart]
                                 receipt_data = {
                                     "receipt_id": st.session_state.current_active_order_id,
                                     "items": items_list,
@@ -375,7 +529,7 @@ def render_kassa_tab():
 
                                 # Удаляем заказ
                                 execute_query("DELETE FROM active_orders WHERE order_id = %s",
-                                            (st.session_state.current_active_order_id,))
+                                              (st.session_state.current_active_order_id,))
                                 st.session_state.current_active_order_id = None
                                 st.success("✅ Заказ оплачен!")
                                 st.rerun()
