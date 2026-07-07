@@ -358,7 +358,7 @@ def render_kassa_tab():
 
     kassa_col1, kassa_col2 = st.columns([0.6, 0.4])
 
-    # Загрузка меню из базы
+    # Загрузка меню
     try:
         rows_menu = execute_query("SELECT dish_name, price, category FROM menu", fetch="all")
         DB_MENU_STRUCT = {}
@@ -368,60 +368,38 @@ def render_kassa_tab():
                 if cat not in DB_MENU_STRUCT:
                     DB_MENU_STRUCT[cat] = {}
                 DB_MENU_STRUCT[cat][name] = price
-    except Exception as e:
-        st.error(f"❌ Ошибка загрузки меню: {e}")
+    except Exception:
         DB_MENU_STRUCT = {}
 
     # Получаем активные заказы
-    try:
-        active_orders = db_get_active_orders()
-        if active_orders is None:
-            active_orders = []
-    except Exception as e:
-        st.error(f"❌ Ошибка загрузки заказов: {e}")
-        active_orders = []
+    active_orders = db_get_active_orders() or []
 
     with kassa_col1:
         st.subheader("📋 Активные чеки")
 
-        if "debug_msg" not in st.session_state:
-            st.session_state.debug_msg = ""
-
+        # Кнопка создания чека
         if st.button("🆕 Открыть Новый Чек", type="primary", use_container_width=True):
-            st.session_state.debug_msg = "Кнопка нажата, идем в БД..."
             try:
-                new_id = int(datetime.datetime.now().strftime("%y%m%d%H%M%S"))
+                # Генерируем ID как строку
+                new_id = datetime.datetime.now().strftime("%y%m%d%H%M%S")
 
-                # Вставка
                 execute_query(
                     "INSERT INTO active_orders (order_id, order_name, cart_json, discount_percent) VALUES (%s, %s, %s, %s)",
                     (new_id, f"Чек №{new_id}", json.dumps([]), 0.0)
                 )
-
-                st.session_state.debug_msg = "Запись в БД успешна!"
                 st.session_state.current_active_order_id = new_id
-                st.rerun()  # Теперь после перезагрузки мы увидим результат
-
-            except Exception as e:
-                st.session_state.debug_msg = f"ОШИБКА: {e}"
-
-            # Отображаем сообщение, если оно есть
-        if st.session_state.debug_msg:
-            st.info(st.session_state.debug_msg)
-            # Чтобы сообщение исчезло после прочтения:
-            if st.button("Очистить лог"):
-                st.session_state.debug_msg = ""
                 st.rerun()
+            except Exception as e:
+                st.error(f"Ошибка создания: {e}")
 
         st.write("---")
 
-        # Отображаем активные чеки
+        # Список чеков
         if active_orders:
-            st.write(f"📋 Найдено {len(active_orders)} активных чеков")
             cols = st.columns(3)
             for idx, order in enumerate(active_orders):
                 with cols[idx % 3]:
-                    if st.button(f"🧾 {order['name']}", key=f"sel_ord_{order['id']}", use_container_width=True):
+                    if st.button(f"🧾 {order['name']}", key=f"sel_{order['id']}", use_container_width=True):
                         st.session_state.current_active_order_id = order['id']
                         st.rerun()
         else:
@@ -437,59 +415,46 @@ def render_kassa_tab():
                     for dish, price in dishes.items():
                         if st.button(f"{dish} ({int(price)} тг)", key=f"add_{dish}_{i}"):
                             if st.session_state.current_active_order_id:
-                                try:
-                                    order = db_get_order_by_id(st.session_state.current_active_order_id)
-                                    if order:
-                                        found = False
-                                        for item in order["cart"]:
-                                            if item["name"] == dish:
-                                                item["qty"] += 1
-                                                found = True
-                                                break
-                                        if not found:
-                                            order["cart"].append({"name": dish, "price": price, "qty": 1})
-                                        db_update_order(order)
-                                        st.rerun()
-                                except Exception as e:
-                                    st.error(f"❌ Ошибка добавления: {e}")
+                                order = db_get_order_by_id(st.session_state.current_active_order_id)
+                                if order:
+                                    found = False
+                                    for item in order["cart"]:
+                                        if item["name"] == dish:
+                                            item["qty"] += 1
+                                            found = True
+                                            break
+                                    if not found:
+                                        order["cart"].append({"name": dish, "price": price, "qty": 1})
+                                    db_update_order(order)
+                                    st.rerun()
                             else:
-                                st.warning("⚠️ Сначала откройте новый чек!")
+                                st.warning("⚠️ Сначала выберите или создайте чек!")
 
     with kassa_col2:
         st.subheader("🧾 Текущий чек")
 
         if st.session_state.current_active_order_id:
-            st.write(f"📌 ID текущего чека: {st.session_state.current_active_order_id}")
-
-            try:
-                order = db_get_order_by_id(st.session_state.current_active_order_id)
-            except Exception as e:
-                st.error(f"❌ Ошибка загрузки заказа: {e}")
-                order = None
+            order = db_get_order_by_id(st.session_state.current_active_order_id)
 
             if order:
-                st.success(f"✅ Выбран: **{order['name']}**")
+                st.success(f"✅ Чек: **{order['name']}**")
 
                 total = sum(item["price"] * item["qty"] for item in order["cart"])
 
-                if not order["cart"]:
-                    st.info("📭 Чек пуст. Добавьте блюда из меню слева.")
-                else:
-                    for item in list(order["cart"]):
-                        col_a, col_b, col_c = st.columns([0.5, 0.3, 0.2])
-                        col_a.write(f"**{item['name']}**")
-                        col_b.write(f"{int(item['price'])} тг x {item['qty']}")
-                        if col_c.button("❌", key=f"del_{item['name']}_{order['id']}"):
-                            item["qty"] -= 1
-                            if item["qty"] <= 0:
-                                order["cart"].remove(item)
-                            db_update_order(order)
-                            st.rerun()
+                # Отображение позиций
+                for item in list(order["cart"]):
+                    c1, c2, c3 = st.columns([0.5, 0.3, 0.2])
+                    c1.write(f"**{item['name']}**")
+                    c2.write(f"{int(item['price'])} x {item['qty']}")
+                    if c3.button("❌", key=f"del_{item['name']}_{order['id']}"):
+                        item["qty"] -= 1
+                        if item["qty"] <= 0:
+                            order["cart"].remove(item)
+                        db_update_order(order)
+                        st.rerun()
 
                 st.write("---")
-
-                disc = st.number_input("Скидка %", min_value=0.0, max_value=100.0, step=5.0,
-                                       value=float(order["discount"]))
+                disc = st.number_input("Скидка %", min_value=0.0, max_value=100.0, value=float(order["discount"]))
                 if disc != order["discount"]:
                     order["discount"] = disc
                     db_update_order(order)
@@ -497,57 +462,38 @@ def render_kassa_tab():
 
                 final_total = total * (1 - disc / 100)
                 st.metric("💳 К оплате", f"{int(final_total)} тг")
-                pay_method = st.radio("Метод оплаты:", ["Наличные", "Kaspi QR"])
+                pay_method = st.radio("Оплата:", ["Наличные", "Kaspi QR"])
 
-                if st.button("✅ Оплатить и закрыть", type="primary", use_container_width=True):
-                    if not order["cart"]:
-                        st.error("❌ Чек пуст! Добавьте блюда.")
-                    else:
-                        try:
-                            today = str(datetime.date.today())
-                            receipt_id = order["id"]
-                            discount_percent = disc
-                            payment_method = pay_method
+                if st.button("✅ Оплатить и закрыть", type="primary"):
+                    try:
+                        # Формируем чек
+                        receipt_data = {
+                            'receipt_id': order["id"],
+                            'items': [{'dish': i['name'], 'qty': i['qty'], 'price': i['price'] * i['qty']} for i in
+                                      order["cart"]],
+                            'total': total,
+                            'discount': disc,
+                            'payment_method': pay_method,
+                            'datetime': datetime.datetime.now().strftime('%d.%m.%Y %H:%M')
+                        }
 
-                            # Подготавливаем данные для чека
-                            items_list = []
-                            for item in order["cart"]:
-                                items_list.append({
-                                    'dish': item['name'],
-                                    'qty': item['qty'],
-                                    'price': item['price'] * item['qty']
-                                })
+                        # Печать (HTML генерируется с utf-8)
+                        html = generate_receipt_html(receipt_data)
+                        print_receipt_universal(html)
 
-                            receipt_data = {
-                                'receipt_id': receipt_id,
-                                'items': items_list,
-                                'total': total,
-                                'discount': discount_percent,
-                                'payment_method': payment_method,
-                                'datetime': datetime.datetime.now().strftime('%d.%m.%Y %H:%M')
-                            }
+                        # Сохранение в продажи и удаление активного
+                        for item in order["cart"]:
+                            execute_query(
+                                "INSERT INTO sales (date, dish, qty, total_price, receipt_id, discount_percent, payment_method) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                                (str(datetime.date.today()), item["name"], item["qty"], item["price"] * item["qty"],
+                                 order["id"], disc, pay_method)
+                            )
 
-                            # Генерируем и печатаем чек
-                            receipt_html = generate_receipt_html(receipt_data)
-                            print_receipt_universal(receipt_html)
-
-                            # Сохраняем продажу в базу
-                            for item in order["cart"]:
-                                execute_query(
-                                    "INSERT INTO sales (date, dish, qty, total_price, receipt_id, discount_percent, payment_method) VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                                    (today, item["name"], item["qty"], item["price"] * item["qty"], order["id"], disc,
-                                     pay_method)
-                                )
-
-                            # Удаляем заказ
-                            execute_query("DELETE FROM active_orders WHERE order_id = %s", (order["id"],))
-                            st.session_state.current_active_order_id = None
-                            st.success("✅ Заказ оплачен!")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"❌ Ошибка при оплате: {e}")
-                            import traceback
-                            st.error(traceback.format_exc())
+                        execute_query("DELETE FROM active_orders WHERE order_id = %s", (order["id"],))
+                        st.session_state.current_active_order_id = None
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Ошибка оплаты: {e}")
             else:
                 st.session_state.current_active_order_id = None
                 st.rerun()

@@ -3,26 +3,25 @@ from database.connection import execute_query
 
 
 def _safe_load_json(data):
-    # Если данных нет, возвращаем пустой список
     if not data:
         return []
-
     try:
-        # Пытаемся превратить текст из базы в объект Python
         if isinstance(data, str):
             parsed = json.loads(data)
         else:
             parsed = data
 
-        # ГЛАВНОЕ: Если это список (новый формат) — всё отлично
+        # Если это словарь, пытаемся достать из него 'cart' или превратить в список
+        if isinstance(parsed, dict):
+            # Если словарь содержит ключ 'cart', возвращаем его
+            return parsed.get("cart", [])
+
+        # Если это список — всё ок
         if isinstance(parsed, list):
             return parsed
 
-        # Если это старый формат (словарь) — просто игнорируем его
-        # и отдаем пустой список, чтобы касса не сломалась!
         return []
     except Exception:
-        # Если произошла любая ошибка чтения, отдаем пустой список
         return []
 
 
