@@ -5,6 +5,7 @@ import streamlit.components.v1 as components
 from database.connection import execute_query
 from database.orders import db_get_active_orders, db_get_order_by_id, db_update_order
 import base64
+import time
 
 
 # ============ УНИВЕРСАЛЬНАЯ ФУНКЦИЯ ПЕЧАТИ ============
@@ -12,7 +13,6 @@ def print_receipt_universal(html_content):
     """
     Универсальная функция печати для всех браузеров (Edge, Firefox, Chrome)
     """
-    # Кодируем HTML в base64 для надежной передачи
     html_bytes = html_content.encode('utf-8')
     b64_html = base64.b64encode(html_bytes).decode('utf-8')
 
@@ -110,10 +110,10 @@ def print_receipt_universal(html_content):
     components.html(print_script, height=0)
 
 
-# ============ ФУНКЦИЯ ГЕНЕРАЦИИ ЧЕКА (ОПТИМИЗИРОВАН ДЛЯ 58mm) ============
+# ============ ФУНКЦИЯ ГЕНЕРАЦИИ ЧЕКА ============
 def generate_receipt_html(receipt_data):
     """
-    Генерирует HTML для чека 58мм x 210мм
+    Генерирует HTML для чека 58мм
     """
     r_id = receipt_data.get('receipt_id', '')
     items = receipt_data.get('items', [])
@@ -122,14 +122,12 @@ def generate_receipt_html(receipt_data):
     payment_method = receipt_data.get('payment_method', 'Наличные')
     date_time = receipt_data.get('datetime', datetime.datetime.now().strftime('%d.%m.%Y %H:%M'))
 
-    # Формируем строки товаров
     items_html = ""
     for item in items:
         dish = item.get('dish', '')
         qty = item.get('qty', 1)
         price = item.get('price', 0)
 
-        # Обрезаем длинные названия для 58mm чека
         if len(dish) > 25:
             dish = dish[:23] + ".."
 
@@ -141,7 +139,6 @@ def generate_receipt_html(receipt_data):
             </tr>
         """
 
-    # Скидка
     discount_html = ""
     if discount_percent > 0:
         discount_amount = total * (discount_percent / 100)
@@ -319,92 +316,39 @@ def generate_receipt_html(receipt_data):
     return html
 
 
-# ============ ФУНКЦИЯ ДЛЯ ПОЛУЧЕНИЯ УНИКАЛЬНОГО НОМЕРА ЧЕКА ============
+# ============ УПРОЩЕННАЯ ФУНКЦИЯ ДЛЯ ПОЛУЧЕНИЯ НОМЕРА ЧЕКА ============
 def get_unique_receipt_number():
     """
-    Генерирует уникальный номер чека, который никогда не повторяется
-    Формат: ГГММДД + порядковый номер за день (0001-9999)
+    Генерирует уникальный номер чека
+    Использует текущую дату + timestamp для гарантированной уникальности
     """
     today = datetime.date.today()
     today_str = today.strftime("%y%m%d")
 
+    # Используем время в миллисекундах для уникальности
+    timestamp = int(time.time() * 1000) % 10000
+    new_id = int(f"{today_str}{timestamp:04d}")
+
+    # Проверяем, что такой ID не существует
     try:
-        # Получаем максимальный номер чека за сегодня
-        result = execute_query(
-            "SELECT MAX(receipt_id) FROM sales WHERE date = %s",
-            (str(today),),
-            fetch="one"
-        )
-
-        # ✅ ИСПРАВЛЕНИЕ: Проверяем все возможные случаи
-        if result and result[0] is not None:
-            try:
-                max_id = int(result[0])
-            except (ValueError, TypeError):
-                max_id = 0
-        else:
-            max_id = 0
-
-    except Exception as e:
-        print(f"Error getting max receipt_id: {e}")
-        max_id = 0
-
-    # Если нет продаж за сегодня, начинаем с 1
-    if max_id == 0:
-        # Проверяем, есть ли вообще записи в таблице sales
-        count_result = execute_query(
-            "SELECT COUNT(*) FROM sales",
-            fetch="one"
-        )
-
-        if count_result and count_result[0] > 0:
-            # Если есть продажи, но не за сегодня, берем максимальный ID за все время
-            all_max_result = execute_query(
-                "SELECT MAX(receipt_id) FROM sales",
-                fetch="one"
-            )
-            if all_max_result and all_max_result[0] is not None:
-                try:
-                    all_max = int(all_max_result[0])
-                    # Берем последние 4 цифры и добавляем 1
-                    last_num = all_max % 10000
-                    new_num = last_num + 1
-                except (ValueError, TypeError):
-                    new_num = 1
-            else:
-                new_num = 1
-        else:
-            # Если продаж вообще нет, начинаем с 1
-            new_num = 1
-    else:
-        # Извлекаем порядковый номер за день
-        last_num = max_id % 10000
-        new_num = last_num + 1
-
-    # Формируем новый ID: ГГММДД + 4-значный номер (с ведущими нулями)
-    new_id = int(f"{today_str}{new_num:04d}")
-
-    # Проверяем, что такой ID еще не существует
-    try:
-        check_result = execute_query(
-            "SELECT receipt_id FROM sales WHERE receipt_id = %s LIMIT 1",
+        check = execute_query(
+            "SELECT order_id FROM active_orders WHERE order_id = %s",
             (new_id,),
             fetch="one"
         )
 
-        # Если такой ID уже есть, увеличиваем номер
-        while check_result and check_result[0] is not None:
-            new_num += 1
-            new_id = int(f"{today_str}{new_num:04d}")
-            check_result = execute_query(
-                "SELECT receipt_id FROM sales WHERE receipt_id = %s LIMIT 1",
+        # Если ID уже существует, добавляем случайное число
+        while check and check[0] is not None:
+            import random
+            new_id = int(f"{today_str}{random.randint(1, 9999):04d}")
+            check = execute_query(
+                "SELECT order_id FROM active_orders WHERE order_id = %s",
                 (new_id,),
                 fetch="one"
             )
     except Exception as e:
-        print(f"Error checking receipt_id: {e}")
-        # Если ошибка, просто генерируем ID на основе времени
-        import time
+        print(f"Error checking ID: {e}")
+        # В случае ошибки используем просто timestamp
         new_id = int(f"{today_str}{int(time.time()) % 10000:04d}")
 
     return new_id
@@ -430,29 +374,24 @@ def render_kassa_tab():
     with kassa_col1:
         st.subheader("Активные чеки")
 
+        # ✅ УПРОЩЕННАЯ КНОПКА ОТКРЫТИЯ ЧЕКА
         if st.button("🆕 Открыть Новый Чек", type="primary", use_container_width=True):
             try:
+                # Генерируем уникальный ID
                 new_id = get_unique_receipt_number()
 
-                # Проверяем, что такого заказа нет в active_orders
-                existing = execute_query(
-                    "SELECT order_id FROM active_orders WHERE order_id = %s",
-                    (new_id,),
-                    fetch="one"
-                )
-
-                if existing and existing[0] is not None:
-                    # Если такой ID уже есть в активных, генерируем новый
-                    import time
-                    new_id = int(f"{datetime.date.today().strftime('%y%m%d')}{int(time.time()) % 10000:04d}")
-
+                # Вставляем в базу
                 execute_query(
                     "INSERT INTO active_orders (order_id, order_name, cart_json, discount_percent) VALUES (%s, %s, %s, %s)",
                     (new_id, f"Чек №{new_id}", json.dumps([]), 0.0)
                 )
+
+                # Сохраняем в сессию
                 st.session_state.current_active_order_id = new_id
+
                 st.success(f"✅ Чек №{new_id} открыт!")
                 st.rerun()
+
             except Exception as e:
                 st.error(f"❌ Ошибка при открытии чека: {e}")
                 import traceback
@@ -468,7 +407,7 @@ def render_kassa_tab():
                         st.session_state.current_active_order_id = order['id']
                         st.rerun()
         else:
-            st.info("Нет активных чеков")
+            st.info("📭 Нет активных чеков")
 
         st.write("---")
 
@@ -492,19 +431,20 @@ def render_kassa_tab():
                                     db_update_order(order)
                                     st.rerun()
                             else:
-                                st.warning("Сначала откройте новый чек!")
+                                st.warning("⚠️ Сначала откройте новый чек!")
 
     with kassa_col2:
-        st.subheader("Текущий чек")
+        st.subheader("🧾 Текущий чек")
+
         if st.session_state.current_active_order_id:
             order = db_get_order_by_id(st.session_state.current_active_order_id)
             if order:
-                st.success(f"Выбран: **{order['name']}**")
+                st.success(f"✅ Выбран: **{order['name']}**")
 
                 total = sum(item["price"] * item["qty"] for item in order["cart"])
 
                 if not order["cart"]:
-                    st.info("Чек пуст. Добавьте блюда из меню слева.")
+                    st.info("📭 Чек пуст. Добавьте блюда из меню слева.")
                 else:
                     for item in list(order["cart"]):
                         col_a, col_b, col_c = st.columns([0.5, 0.3, 0.2])
@@ -527,7 +467,7 @@ def render_kassa_tab():
                     st.rerun()
 
                 final_total = total * (1 - disc / 100)
-                st.metric("К оплате", f"{int(final_total)} тг")
+                st.metric("💳 К оплате", f"{int(final_total)} тг")
                 pay_method = st.radio("Метод оплаты:", ["Наличные", "Kaspi QR"])
 
                 if st.button("✅ Оплатить и закрыть", type="primary", use_container_width=True):
@@ -535,7 +475,6 @@ def render_kassa_tab():
                         st.error("❌ Чек пуст! Добавьте блюда.")
                     else:
                         today = str(datetime.date.today())
-
                         receipt_id = order["id"]
                         discount_percent = disc
                         payment_method = pay_method
@@ -579,4 +518,4 @@ def render_kassa_tab():
                 st.session_state.current_active_order_id = None
                 st.rerun()
         else:
-            st.info("Выберите или создайте заказ слева")
+            st.info("👈 Выберите или создайте заказ слева")
