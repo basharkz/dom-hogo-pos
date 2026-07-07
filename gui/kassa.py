@@ -17,9 +17,7 @@ def print_receipt_universal(html_content):
     """
     Универсальная функция печати для всех браузеров
     """
-    import base64
-
-    # 🔥 ВАЖНО: Кодируем с правильной кодировкой UTF-8
+    # 🔥 ВАЖНО: Конвертируем в base64
     html_bytes = html_content.encode('utf-8')
     b64_html = base64.b64encode(html_bytes).decode('utf-8')
 
@@ -28,21 +26,20 @@ def print_receipt_universal(html_content):
     (function() {{
         console.log('🖨️ Запуск печати...');
 
-        // 🔥 Декодируем из base64
         var htmlContent = atob('{b64_html}');
 
-        // 🔥 СОЗДАЕМ НОВОЕ ОКНО
+        // Создаем новое окно
         var w = window.open('', '_blank', 'width=400,height=600,menubar=no,toolbar=no,location=no,status=no,scrollbars=yes');
         if (!w) {{
             alert('Пожалуйста, разрешите всплывающие окна для печати!');
             return;
         }}
 
-        // 🔥 ЗАПИСЫВАЕМ HTML С ПРАВИЛЬНОЙ КОДИРОВКОЙ
+        // Записываем HTML
         w.document.write(htmlContent);
         w.document.close();
 
-        // 🔥 ЖДЕМ ЗАГРУЗКИ И ПЕЧАТАЕМ
+        // Печатаем
         setTimeout(function() {{
             w.focus();
             w.print();
@@ -55,6 +52,16 @@ def print_receipt_universal(html_content):
     """
     components.html(print_script, height=0)
 
+def to_html_entities(text):
+    """Конвертирует русские буквы в HTML-сущности"""
+    result = ""
+    for char in text:
+        code = ord(char)
+        if code > 127:  # Не ASCII символ
+            result += f"&#{code};"
+        else:
+            result += char
+    return result
 
 # ============ ГЕНЕРАЦИЯ ЧЕКА (С ПРАВИЛЬНОЙ КОДИРОВКОЙ) ============
 def generate_receipt_html(receipt_data):
@@ -65,12 +72,14 @@ def generate_receipt_html(receipt_data):
     payment_method = receipt_data.get('payment_method', 'Наличные')
     date_time = receipt_data.get('datetime', datetime.datetime.now().strftime('%d.%m.%Y %H:%M'))
 
+    # 🔥 КОНВЕРТИРУЕМ ВСЕ РУССКИЕ БУКВЫ В HTML-СУЩНОСТИ
+    r_id_enc = to_html_entities(str(r_id))
+    payment_method_enc = to_html_entities(payment_method)
+    date_time_enc = to_html_entities(date_time)
+
     items_html = ""
     for item in items:
-        dish = str(item.get('dish', ''))
-        # 🔥 Экранируем для HTML
-        dish = dish.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;').replace("'",
-                                                                                                                   '&#39;')
+        dish = to_html_entities(str(item.get('dish', '')))
         qty = item.get('qty', 1)
         price = item.get('price', 0)
 
@@ -99,13 +108,12 @@ def generate_receipt_html(receipt_data):
     <head>
         <meta charset="UTF-8">
         <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-        <meta http-equiv="Content-Language" content="ru">
-        <title>Чек #{r_id}</title>
+        <title>Чек #{r_id_enc}</title>
         <style>
             @page {{ size: 48mm auto; margin: 2mm 3mm; }}
             body {{ 
                 width: 48mm; 
-                font-family: 'Courier New', 'Lucida Console', 'Monaco', monospace; 
+                font-family: 'Arial', 'Helvetica', sans-serif;
                 margin: 0; 
                 padding: 0; 
                 font-size: 11px;
@@ -127,32 +135,32 @@ def generate_receipt_html(receipt_data):
         </style>
     </head>
     <body>
-        <div class="header">🏮 WoJia HUOGUO</div>
-        <div class="sub-header">{date_time}</div>
-        <div class="order-number">Чек #{r_id}</div>
+        <div class="header">&#127987; WoJia HUOGUO</div>
+        <div class="sub-header">{date_time_enc}</div>
+        <div class="order-number">&#1095;&#1077;&#1082; #{r_id_enc}</div>
         <hr class="divider">
         <table>
             <tr style="border-bottom: 1px solid #000;">
-                <td class="item-name"><b>Наименование</b></td>
-                <td class="item-qty"><b>Кол</b></td>
-                <td class="item-price"><b>Сумма</b></td>
+                <td class="item-name"><b>&#1053;&#1072;&#1080;&#1084;&#1077;&#1085;&#1086;&#1074;&#1072;&#1085;&#1080;&#1077;</b></td>
+                <td class="item-qty"><b>&#1050;&#1086;&#1083;</b></td>
+                <td class="item-price"><b>&#1057;&#1091;&#1084;&#1084;&#1072;</b></td>
             </tr>
             {items_html}
         </table>
         <hr class="divider">
         <table>
-            <tr class="total-row"><td colspan="2">ИТОГО:</td><td class="item-price">{int(total)} тг</td></tr>
+            <tr class="total-row"><td colspan="2">&#1048;&#1058;&#1054;&#1043;&#1054;:</td><td class="item-price">{int(total)} &#1090;&#1075;</td></tr>
             {discount_html}
             <tr class="total-row" style="border-top:1px solid #000; font-size:14px;">
-                <td colspan="2">К ОПЛАТЕ:</td>
-                <td class="item-price">{int(final_total)} тг</td>
+                <td colspan="2">&#1050; &#1054;&#1055;&#1051;&#1040;&#1058;&#1045;:</td>
+                <td class="item-price">{int(final_total)} &#1090;&#1075;</td>
             </tr>
         </table>
         <hr class="divider-double">
-        <div class="thank-you">Спасибо! 🙏</div>
-        <div class="footer">Приятного аппетита!</div>
+        <div class="thank-you">&#1057;&#1087;&#1072;&#1089;&#1080;&#1073;&#1086;! &#128591;</div>
+        <div class="footer">&#1055;&#1088;&#1080;&#1103;&#1090;&#1085;&#1086;&#1075;&#1086; &#1072;&#1087;&#1087;&#1077;&#1090;&#1080;&#1090;&#1072;!</div>
         <div class="footer" style="font-size:9px; color:#999; margin-top:2px;">
-            {payment_method} • {datetime.datetime.now().strftime('%H:%M')}
+            {payment_method_enc} &#8226; {datetime.datetime.now().strftime('%H:%M')}
         </div>
     </body>
 </html>"""
