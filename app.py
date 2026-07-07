@@ -1,3 +1,7 @@
+import os
+os.environ['PYTHONIOENCODING'] = 'utf-8'
+os.environ['LANG'] = 'ru_RU.UTF-8'
+os.environ['LC_ALL'] = 'ru_RU.UTF-8'
 import streamlit as st
 import datetime
 from database.connection import init_db, execute_query

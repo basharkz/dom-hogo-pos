@@ -13,6 +13,8 @@ def print_receipt_universal(html_content):
     """
     Универсальная функция печати для всех браузеров
     """
+    import base64
+
     # 🔥 ВАЖНО: Кодируем с правильной кодировкой
     html_bytes = html_content.encode('utf-8')
     b64_html = base64.b64encode(html_bytes).decode('utf-8')
@@ -24,128 +26,24 @@ def print_receipt_universal(html_content):
 
         // 🔥 Декодируем с правильной кодировкой
         var htmlContent = atob('{b64_html}');
-        var isEdge = navigator.userAgent.indexOf("Edg") > -1;
-        var isFirefox = navigator.userAgent.indexOf("Firefox") > -1;
 
-        function printWithWindow() {{
-            try {{
-                console.log('🖨️ Метод window...');
-                var w = window.open('', '_blank', 'width=400,height=600,menubar=no,toolbar=no,location=no,status=no,scrollbars=yes');
-                if (!w) {{
-                    console.error('❌ Окно заблокировано!');
-                    alert('Пожалуйста, разрешите всплывающие окна для печати!');
-                    return false;
-                }}
-                w.document.write(htmlContent);
-                w.document.close();
-
-                setTimeout(function() {{
-                    try {{
-                        w.focus();
-                        w.print();
-                        setTimeout(function() {{
-                            try {{ w.close(); }} catch(e) {{}}
-                        }}, 3000);
-                    }} catch(e) {{
-                        console.error('Ошибка печати:', e);
-                    }}
-                }}, 1000);
-                return true;
-            }} catch(e) {{
-                console.error('❌ Ошибка window:', e);
-                return false;
-            }}
+        var w = window.open('', '_blank', 'width=400,height=600,menubar=no,toolbar=no,location=no,status=no,scrollbars=yes');
+        if (!w) {{
+            alert('Пожалуйста, разрешите всплывающие окна для печати!');
+            return;
         }}
 
-        function printWithIframe() {{
-            try {{
-                console.log('🖨️ Метод iframe...');
-                var iframe = document.createElement('iframe');
-                iframe.style.position = 'fixed';
-                iframe.style.right = '-9999px';
-                iframe.style.top = '0';
-                iframe.style.width = '400px';
-                iframe.style.height = '600px';
-                iframe.style.border = 'none';
-                document.body.appendChild(iframe);
+        // 🔥 Важно: записываем с правильной кодировкой
+        w.document.write(htmlContent);
+        w.document.close();
 
-                var iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-                iframeDoc.open();
-                iframeDoc.write(htmlContent);
-                iframeDoc.close();
-
-                setTimeout(function() {{
-                    try {{
-                        iframe.contentWindow.focus();
-                        iframe.contentWindow.print();
-                        setTimeout(function() {{
-                            try {{ document.body.removeChild(iframe); }} catch(e) {{}}
-                        }}, 3000);
-                    }} catch(e) {{
-                        console.error('Ошибка печати в iframe:', e);
-                    }}
-                }}, 1000);
-                return true;
-            }} catch(e) {{
-                console.error('❌ Ошибка iframe:', e);
-                return false;
-            }}
-        }}
-
-        function printWithBlob() {{
-            try {{
-                console.log('🖨️ Метод Blob...');
-                var blob = new Blob([htmlContent], {{type: 'text/html; charset=utf-8'}});
-                var url = URL.createObjectURL(blob);
-                var w = window.open(url, '_blank', 'width=400,height=600');
-                if (!w) {{
-                    console.error('❌ Окно заблокировано!');
-                    return false;
-                }}
-                setTimeout(function() {{
-                    try {{
-                        w.focus();
-                        w.print();
-                        setTimeout(function() {{
-                            try {{ 
-                                w.close();
-                                URL.revokeObjectURL(url);
-                            }} catch(e) {{}}
-                        }}, 3000);
-                    }} catch(e) {{
-                        console.error('Ошибка печати:', e);
-                    }}
-                }}, 1000);
-                return true;
-            }} catch(e) {{
-                console.error('❌ Ошибка Blob:', e);
-                return false;
-            }}
-        }}
-
-        var success = false;
-
-        if (isEdge) {{
-            console.log('🖨️ Edge - пробуем iframe');
-            success = printWithIframe();
-            if (!success) success = printWithBlob();
-            if (!success) success = printWithWindow();
-        }} else if (isFirefox) {{
-            console.log('🖨️ Firefox - пробуем window');
-            success = printWithWindow();
-            if (!success) success = printWithIframe();
-            if (!success) success = printWithBlob();
-        }} else {{
-            console.log('🖨️ Другой браузер - пробуем window');
-            success = printWithWindow();
-            if (!success) success = printWithIframe();
-            if (!success) success = printWithBlob();
-        }}
-
-        if (!success) {{
-            console.error('❌ Все методы печати не сработали!');
-            alert('Не удалось открыть окно печати.\\nПроверьте настройки браузера и разрешите всплывающие окна.');
-        }}
+        setTimeout(function() {{
+            w.focus();
+            w.print();
+            setTimeout(function() {{
+                try {{ w.close(); }} catch(e) {{}}
+            }}, 3000);
+        }}, 1000);
     }})();
     </script>
     """
@@ -163,13 +61,13 @@ def generate_receipt_html(receipt_data):
 
     items_html = ""
     for item in items:
-        # 🔥 ВАЖНО: Принудительно преобразуем в строку и экранируем
-        dish = str(item.get('dish', ''))
+        dish = item.get('dish', '')
         qty = item.get('qty', 1)
         price = item.get('price', 0)
 
-        # Экранируем спецсимволы для HTML
-        dish = dish.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
+        # 🔥 Экранируем для HTML
+        dish = str(dish).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;').replace(
+            "'", '&#39;')
 
         items_html += f"""
             <tr>
@@ -191,14 +89,19 @@ def generate_receipt_html(receipt_data):
 
     final_total = total * (1 - discount_percent / 100)
 
-    # 🔥 ВАЖНО: Явно указываем кодировку
-    html = f"""<!DOCTYPE html>
+    # 🔥 ВАЖНО: Явно указываем кодировку и используем html.escape
+    import html
+    payment_method_escaped = html.escape(payment_method)
+    date_time_escaped = html.escape(date_time)
+    order_number_escaped = html.escape(str(r_id))
+
+    return f"""<!DOCTYPE html>
 <html>
     <head>
         <meta charset="UTF-8">
         <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
         <meta http-equiv="Content-Language" content="ru">
-        <title>Чек #{r_id}</title>
+        <title>Чек #{order_number_escaped}</title>
         <style>
             @page {{ size: 48mm auto; margin: 2mm 3mm; }}
             body {{ 
@@ -213,11 +116,11 @@ def generate_receipt_html(receipt_data):
             .order-number {{ text-align: center; font-size: 10px; color: #666; }}
             .divider {{ border: 0; border-top: 1px dashed #000; margin: 3px 0; }}
             .divider-double {{ border: 0; border-top: 2px solid #000; margin: 3px 0; }}
-            table {{ width: 100%%; border-collapse: collapse; font-size: 10px; }}
+            table {{ width: 100%; border-collapse: collapse; font-size: 10px; }}
             td {{ padding: 1px 0; }}
-            .item-name {{ width: 55%%; }}
-            .item-qty {{ width: 15%%; text-align: center; }}
-            .item-price {{ width: 30%%; text-align: right; }}
+            .item-name {{ width: 55%; }}
+            .item-qty {{ width: 15%; text-align: center; }}
+            .item-price {{ width: 30%; text-align: right; }}
             .total-row {{ font-weight: bold; font-size: 12px; }}
             .discount-row {{ font-size: 10px; color: #666; }}
             .footer {{ text-align: center; font-size: 10px; margin: 3px 0; }}
@@ -226,8 +129,8 @@ def generate_receipt_html(receipt_data):
     </head>
     <body>
         <div class="header">🏮 WoJia HUOGUO</div>
-        <div class="sub-header">{date_time}</div>
-        <div class="order-number">Чек #{r_id}</div>
+        <div class="sub-header">{date_time_escaped}</div>
+        <div class="order-number">Чек #{order_number_escaped}</div>
         <hr class="divider">
         <table>
             <tr style="border-bottom: 1px solid #000;">
@@ -250,12 +153,10 @@ def generate_receipt_html(receipt_data):
         <div class="thank-you">Спасибо! 🙏</div>
         <div class="footer">Приятного аппетита!</div>
         <div class="footer" style="font-size:9px; color:#999; margin-top:2px;">
-            {payment_method} • {datetime.datetime.now().strftime('%H:%M')}
+            {payment_method_escaped} • {datetime.datetime.now().strftime('%H:%M')}
         </div>
     </body>
 </html>"""
-
-    return html
 
 
 # ============ ФУНКЦИЯ ДЛЯ ПОЛУЧЕНИЯ УНИКАЛЬНОГО НОМЕРА ЧЕКА ============
