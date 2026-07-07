@@ -9,27 +9,29 @@ import time
 
 # ============ ПРОСТАЯ ФУНКЦИЯ ПЕЧАТИ ============
 def print_receipt_universal(html_content):
-    html_bytes = html_content.encode('utf-8')
-    b64_html = base64.b64encode(html_bytes).decode('utf-8')
+    b64_html = base64.b64encode(html_content.encode('utf-8')).decode('utf-8')
 
     print_script = f"""
-    <script>
-    (function() {{
-        var htmlContent = atob('{b64_html}');
-        var w = window.open('', '_blank', 'width=400,height=600');
-        if (!w) {{
-            alert('Разрешите всплывающие окна!');
-            return;
-        }}
-        w.document.write(htmlContent);
-        w.document.close();
-        setTimeout(function() {{
-            w.print();
-            setTimeout(function() {{ w.close(); }}, 1000);
-        }}, 500);
-    }})();
-    </script>
-    """
+        <script>
+        (function() {{
+            // Открываем окно напрямую через Data URI
+            var w = window.open('data:text/html;base64,{b64_html}', '_blank', 'width=400,height=600');
+
+            if (!w) {{
+                alert('Разрешите всплывающие окна!');
+                return;
+            }}
+
+            // Ждем загрузки и печатаем
+            w.onload = function() {{
+                setTimeout(function() {{
+                    w.print();
+                    setTimeout(function() {{ w.close(); }}, 1000);
+                }}, 500);
+            }};
+        }})();
+        </script>
+        """
     components.html(print_script, height=0)
 
 
@@ -124,7 +126,7 @@ def generate_receipt_html(receipt_data):
 
 # ============ ГЛАВНАЯ ФУНКЦИЯ КАССЫ ============
 def render_kassa_tab():
-    
+
     st.subheader("🏪 Касса")
 
     # Инициализация сессии
