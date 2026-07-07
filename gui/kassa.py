@@ -12,6 +12,7 @@ def print_receipt_universal(html_content):
     """
     Универсальная функция печати для всех браузеров
     """
+    # 🔥 ВАЖНО: Кодируем с правильной кодировкой
     html_bytes = html_content.encode('utf-8')
     b64_html = base64.b64encode(html_bytes).decode('utf-8')
 
@@ -20,6 +21,7 @@ def print_receipt_universal(html_content):
     (function() {{
         console.log('🖨️ Запуск печати...');
 
+        // 🔥 Декодируем с правильной кодировкой
         var htmlContent = atob('{b64_html}');
         var isEdge = navigator.userAgent.indexOf("Edg") > -1;
         var isFirefox = navigator.userAgent.indexOf("Firefox") > -1;
@@ -92,7 +94,7 @@ def print_receipt_universal(html_content):
         function printWithBlob() {{
             try {{
                 console.log('🖨️ Метод Blob...');
-                var blob = new Blob([htmlContent], {{type: 'text/html'}});
+                var blob = new Blob([htmlContent], {{type: 'text/html; charset=utf-8'}});
                 var url = URL.createObjectURL(blob);
                 var w = window.open(url, '_blank', 'width=400,height=600');
                 if (!w) {{
@@ -149,7 +151,7 @@ def print_receipt_universal(html_content):
     components.html(print_script, height=0)
 
 
-# ============ ГЕНЕРАЦИЯ ЧЕКА ============
+# ============ ГЕНЕРАЦИЯ ЧЕКА (С ПРАВИЛЬНОЙ КОДИРОВКОЙ) ============
 def generate_receipt_html(receipt_data):
     r_id = receipt_data.get('receipt_id', '')
     items = receipt_data.get('items', [])
@@ -183,15 +185,25 @@ def generate_receipt_html(receipt_data):
 
     final_total = total * (1 - discount_percent / 100)
 
+    # 🔥 ВАЖНО: Добавлена правильная кодировка в HTML
     return f"""
     <!DOCTYPE html>
     <html>
         <head>
             <meta charset="UTF-8">
+            <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+            <meta http-equiv="Content-Language" content="ru">
             <title>Чек #{r_id}</title>
             <style>
                 @page {{ size: 48mm auto; margin: 2mm 3mm; }}
-                body {{ width: 48mm; font-family: monospace; margin: 0; padding: 0; font-size: 11px; }}
+                body {{ 
+                    width: 48mm; 
+                    font-family: 'Courier New', 'Lucida Console', monospace; 
+                    margin: 0; 
+                    padding: 0; 
+                    font-size: 11px;
+                    -webkit-font-smoothing: antialiased;
+                }}
                 .header {{ text-align: center; font-size: 14px; font-weight: bold; }}
                 .sub-header {{ text-align: center; font-size: 11px; }}
                 .order-number {{ text-align: center; font-size: 10px; color: #666; }}
@@ -232,7 +244,10 @@ def generate_receipt_html(receipt_data):
             </table>
             <hr class="divider-double">
             <div class="thank-you">Спасибо! 🙏</div>
-            <div class="footer">{payment_method} • {datetime.datetime.now().strftime('%H:%M')}</div>
+            <div class="footer">Приятного аппетита!</div>
+            <div class="footer" style="font-size:9px; color:#999; margin-top:2px;">
+                {payment_method} • {datetime.datetime.now().strftime('%H:%M')}
+            </div>
         </body>
     </html>
     """
@@ -244,7 +259,6 @@ def get_unique_receipt_number():
     today = datetime.date.today()
     today_str = today.strftime("%y%m%d")
 
-    # Получаем максимальный ID из таблицы sales (история)
     try:
         max_row = execute_query(
             "SELECT MAX(receipt_id) FROM sales WHERE receipt_id LIKE %s",
@@ -253,23 +267,19 @@ def get_unique_receipt_number():
         )
 
         if max_row and max_row[0]:
-            # Берем последние 4 цифры и добавляем 1
             try:
                 last_num = int(str(max_row[0])[-4:]) + 1
             except:
                 last_num = 1
         else:
-            # Если сегодня нет продаж, начинаем с 1
             last_num = 1
 
     except Exception as e:
         print(f"Ошибка получения MAX ID: {e}")
         last_num = 1
 
-    # Формируем новый ID
     new_id = f"{today_str}{last_num:04d}"
 
-    # Дополнительная проверка: если такой ID есть в active_orders (маловероятно)
     try:
         check = execute_query(
             "SELECT order_id FROM active_orders WHERE order_id = %s",
@@ -294,11 +304,9 @@ def get_unique_receipt_number():
 def render_kassa_tab():
     st.subheader("🏪 Касса")
 
-    # Инициализация сессии
     if "current_active_order_id" not in st.session_state:
         st.session_state.current_active_order_id = None
 
-    # СОЗДАЕМ ТАБЛИЦУ (ДЛЯ POSTGRESQL)
     try:
         execute_query("""
             CREATE TABLE IF NOT EXISTS active_orders (
@@ -313,7 +321,6 @@ def render_kassa_tab():
 
     col_left, col_right = st.columns([0.6, 0.4])
 
-    # ЗАГРУЗКА МЕНЮ
     try:
         menu_rows = execute_query("SELECT dish_name, price, category FROM menu", fetch="all")
         menu = {}
@@ -327,7 +334,6 @@ def render_kassa_tab():
         st.error(f"❌ Ошибка загрузки меню: {e}")
         menu = {}
 
-    # ЗАГРУЗКА АКТИВНЫХ ЗАКАЗОВ
     try:
         orders_rows = execute_query(
             "SELECT order_id, order_name, cart_json, discount_percent FROM active_orders ORDER BY order_id",
@@ -353,25 +359,20 @@ def render_kassa_tab():
     with col_left:
         st.subheader("📋 Активные чеки")
 
-        # ДИАГНОСТИКА
         st.write(f"📌 Текущий ID в сессии: {st.session_state.current_active_order_id}")
         st.write(f"📌 Активных заказов в БД: {len(active_orders)}")
 
-        # ===== КНОПКА ОТКРЫТИЯ ЧЕКА =====
         if st.button("🆕 Открыть Новый Чек", type="primary", use_container_width=True):
             try:
-                # Используем исправленную функцию
                 new_id = get_unique_receipt_number()
 
                 st.info(f"🔄 Создается чек №{new_id}...")
 
-                # Вставляем в БД
                 execute_query(
                     "INSERT INTO active_orders (order_id, order_name, cart_json, discount_percent) VALUES (%s, %s, %s, %s)",
                     (new_id, f"Чек №{new_id}", json.dumps([]), 0.0)
                 )
 
-                # Проверяем, что запись создалась
                 check = execute_query(
                     "SELECT order_id FROM active_orders WHERE order_id = %s",
                     (new_id,),
@@ -392,7 +393,6 @@ def render_kassa_tab():
 
         st.write("---")
 
-        # СПИСОК ЧЕКОВ
         if active_orders:
             cols = st.columns(3)
             for idx, order in enumerate(active_orders):
@@ -405,7 +405,6 @@ def render_kassa_tab():
 
         st.write("---")
 
-        # МЕНЮ
         if menu:
             tabs = st.tabs(list(menu.keys()))
             for i, (cat, dishes) in enumerate(menu.items()):
@@ -413,7 +412,6 @@ def render_kassa_tab():
                     for dish, price in dishes.items():
                         if st.button(f"{dish} ({int(price)} тг)", key=f"add_{dish}_{i}"):
                             if st.session_state.current_active_order_id:
-                                # Получаем текущий заказ
                                 order_row = execute_query(
                                     "SELECT cart_json, discount_percent FROM active_orders WHERE order_id = %s",
                                     (st.session_state.current_active_order_id,),
@@ -424,7 +422,6 @@ def render_kassa_tab():
                                         cart = json.loads(order_row[0]) if order_row[0] else []
                                         discount = float(order_row[1]) if order_row[1] else 0.0
 
-                                        # Добавляем товар
                                         found = False
                                         for item in cart:
                                             if item["name"] == dish:
@@ -434,7 +431,6 @@ def render_kassa_tab():
                                         if not found:
                                             cart.append({"name": dish, "price": price, "qty": 1})
 
-                                        # Обновляем
                                         execute_query(
                                             "UPDATE active_orders SET cart_json = %s, discount_percent = %s WHERE order_id = %s",
                                             (json.dumps(cart), discount, st.session_state.current_active_order_id)
@@ -449,7 +445,6 @@ def render_kassa_tab():
         st.subheader("🧾 Текущий чек")
 
         if st.session_state.current_active_order_id:
-            # Получаем текущий заказ
             order_row = execute_query(
                 "SELECT order_name, cart_json, discount_percent FROM active_orders WHERE order_id = %s",
                 (st.session_state.current_active_order_id,),
@@ -503,7 +498,6 @@ def render_kassa_tab():
                             st.error("❌ Чек пуст!")
                         else:
                             try:
-                                # Сохраняем в sales
                                 today = str(datetime.date.today())
                                 for item in cart:
                                     execute_query(
@@ -512,7 +506,6 @@ def render_kassa_tab():
                                          st.session_state.current_active_order_id, disc, pay_method)
                                     )
 
-                                # Печатаем чек
                                 items_list = [
                                     {"dish": item["name"], "qty": item["qty"], "price": item["price"] * item["qty"]} for
                                     item in cart]
@@ -527,7 +520,6 @@ def render_kassa_tab():
                                 receipt_html = generate_receipt_html(receipt_data)
                                 print_receipt_universal(receipt_html)
 
-                                # Удаляем заказ
                                 execute_query("DELETE FROM active_orders WHERE order_id = %s",
                                               (st.session_state.current_active_order_id,))
                                 st.session_state.current_active_order_id = None
