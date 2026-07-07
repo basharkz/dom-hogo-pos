@@ -6,7 +6,11 @@ from database.connection import execute_query
 import base64
 import time
 
-
+# 🔥 ВАЖНО: Устанавливаем кодировку для всего файла
+import sys
+import io
+if sys.stdout.encoding != 'UTF-8':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
 # ============ УНИВЕРСАЛЬНАЯ ФУНКЦИЯ ПЕЧАТИ ============
 def print_receipt_universal(html_content):
@@ -15,7 +19,7 @@ def print_receipt_universal(html_content):
     """
     import base64
 
-    # 🔥 ВАЖНО: Кодируем с правильной кодировкой
+    # 🔥 ВАЖНО: Кодируем с правильной кодировкой UTF-8
     html_bytes = html_content.encode('utf-8')
     b64_html = base64.b64encode(html_bytes).decode('utf-8')
 
@@ -24,19 +28,21 @@ def print_receipt_universal(html_content):
     (function() {{
         console.log('🖨️ Запуск печати...');
 
-        // 🔥 Декодируем с правильной кодировкой
+        // 🔥 Декодируем из base64
         var htmlContent = atob('{b64_html}');
 
+        // 🔥 СОЗДАЕМ НОВОЕ ОКНО
         var w = window.open('', '_blank', 'width=400,height=600,menubar=no,toolbar=no,location=no,status=no,scrollbars=yes');
         if (!w) {{
             alert('Пожалуйста, разрешите всплывающие окна для печати!');
             return;
         }}
 
-        // 🔥 Важно: записываем с правильной кодировкой
+        // 🔥 ЗАПИСЫВАЕМ HTML С ПРАВИЛЬНОЙ КОДИРОВКОЙ
         w.document.write(htmlContent);
         w.document.close();
 
+        // 🔥 ЖДЕМ ЗАГРУЗКИ И ПЕЧАТАЕМ
         setTimeout(function() {{
             w.focus();
             w.print();
@@ -61,13 +67,12 @@ def generate_receipt_html(receipt_data):
 
     items_html = ""
     for item in items:
-        dish = item.get('dish', '')
+        dish = str(item.get('dish', ''))
+        # 🔥 Экранируем для HTML
+        dish = dish.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;').replace("'",
+                                                                                                                   '&#39;')
         qty = item.get('qty', 1)
         price = item.get('price', 0)
-
-        # 🔥 Экранируем для HTML
-        dish = str(dish).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;').replace(
-            "'", '&#39;')
 
         items_html += f"""
             <tr>
@@ -89,19 +94,13 @@ def generate_receipt_html(receipt_data):
 
     final_total = total * (1 - discount_percent / 100)
 
-    # 🔥 ВАЖНО: Явно указываем кодировку и используем html.escape
-    import html
-    payment_method_escaped = html.escape(payment_method)
-    date_time_escaped = html.escape(date_time)
-    order_number_escaped = html.escape(str(r_id))
-
     return f"""<!DOCTYPE html>
 <html>
     <head>
         <meta charset="UTF-8">
         <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
         <meta http-equiv="Content-Language" content="ru">
-        <title>Чек #{order_number_escaped}</title>
+        <title>Чек #{r_id}</title>
         <style>
             @page {{ size: 48mm auto; margin: 2mm 3mm; }}
             body {{ 
@@ -129,8 +128,8 @@ def generate_receipt_html(receipt_data):
     </head>
     <body>
         <div class="header">🏮 WoJia HUOGUO</div>
-        <div class="sub-header">{date_time_escaped}</div>
-        <div class="order-number">Чек #{order_number_escaped}</div>
+        <div class="sub-header">{date_time}</div>
+        <div class="order-number">Чек #{r_id}</div>
         <hr class="divider">
         <table>
             <tr style="border-bottom: 1px solid #000;">
@@ -153,7 +152,7 @@ def generate_receipt_html(receipt_data):
         <div class="thank-you">Спасибо! 🙏</div>
         <div class="footer">Приятного аппетита!</div>
         <div class="footer" style="font-size:9px; color:#999; margin-top:2px;">
-            {payment_method_escaped} • {datetime.datetime.now().strftime('%H:%M')}
+            {payment_method} • {datetime.datetime.now().strftime('%H:%M')}
         </div>
     </body>
 </html>"""
