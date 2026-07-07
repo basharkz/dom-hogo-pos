@@ -8,6 +8,7 @@ def get_connection():
 
 
 def execute_query(query, params=None, fetch="none"):
+    print(f"DEBUG: Подключаюсь к БД: {DATABASE_URL}")
     """Универсальная функция для выполнения запросов"""
     conn = None
     cursor = None
