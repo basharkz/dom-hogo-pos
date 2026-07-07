@@ -384,29 +384,34 @@ def render_kassa_tab():
     with kassa_col1:
         st.subheader("📋 Активные чеки")
 
-        # ✅ ПРОСТАЯ КНОПКА ОТКРЫТИЯ ЧЕКА
-        if st.button("🆕 Открыть Новый Чек", type="primary", use_container_width=True):
-            st.write("Кнопка нажата!")  # Проверка, доходит ли код сюда
+        if "debug_msg" not in st.session_state:
+            st.session_state.debug_msg = ""
 
+        if st.button("🆕 Открыть Новый Чек", type="primary", use_container_width=True):
+            st.session_state.debug_msg = "Кнопка нажата, идем в БД..."
             try:
                 new_id = int(datetime.datetime.now().strftime("%y%m%d%H%M%S"))
 
-                # Добавим принудительный вывод параметров
-                st.write(f"Генерация ID: {new_id}")
-
+                # Вставка
                 execute_query(
                     "INSERT INTO active_orders (order_id, order_name, cart_json, discount_percent) VALUES (%s, %s, %s, %s)",
                     (new_id, f"Чек №{new_id}", json.dumps([]), 0.0)
                 )
 
-                st.write("Запрос в БД выполнен.")
-
+                st.session_state.debug_msg = "Запись в БД успешна!"
                 st.session_state.current_active_order_id = new_id
-                st.rerun()
+                st.rerun()  # Теперь после перезагрузки мы увидим результат
 
             except Exception as e:
-                st.error(f"КРИТИЧЕСКАЯ ОШИБКА: {e}")
-                st.stop()  # Остановка, чтобы видеть ошибку
+                st.session_state.debug_msg = f"ОШИБКА: {e}"
+
+            # Отображаем сообщение, если оно есть
+        if st.session_state.debug_msg:
+            st.info(st.session_state.debug_msg)
+            # Чтобы сообщение исчезло после прочтения:
+            if st.button("Очистить лог"):
+                st.session_state.debug_msg = ""
+                st.rerun()
 
         st.write("---")
 
