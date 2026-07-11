@@ -5,10 +5,16 @@ from database.connection import execute_query
 from ai_modules.ocr_engine import DocumentProcessor
 
 
-def render_warehouse_tab():
-    st.markdown("### :package: Учет складских запасов") # Более строгий стиль
+# Кэшируем процессор
+@st.cache_resource
+def get_document_processor():
+    return DocumentProcessor()
 
-    # Получение текущих остатков
+
+def render_warehouse_tab():
+    st.markdown("### :package: Учет складских запасов")
+
+    # Получение текущих остатков с кэшированием
     cursor_summary = execute_query("SELECT item, SUM(qty) FROM inventory GROUP BY item", fetch="all")
     all_inventory_items = [row[0] for row in cursor_summary] if cursor_summary else []
 
@@ -41,27 +47,23 @@ def render_warehouse_tab():
                     st.success("Успешно добавлено!")
                     st.rerun()
 
-
         else:  # РЕЖИМ OCR
-
             uploaded_file = st.file_uploader("Выберите документ:", type=['jpg', 'jpeg', 'png', 'pdf', 'xlsx'])
 
             if uploaded_file:
-
                 path = f"temp_doc{os.path.splitext(uploaded_file.name)[1]}"
-
                 with open(path, "wb") as f:
-
                     f.write(uploaded_file.getbuffer())
 
                 if st.button(":rocket: Распознать документ", use_container_width=True):
+                    # Используем кэшированный процессор
+                    proc = get_document_processor()
+
                     # Создаем "элитный" индикатор прогресса
                     progress_text = "Анализ документа... Пожалуйста, подождите."
                     my_bar = st.progress(0, text=progress_text)
 
                     with st.spinner(progress_text):
-                        proc = DocumentProcessor()
-
                         # Шаг 1: Чтение (занимает 30% времени)
                         my_bar.progress(30, text="Читаю текст...")
                         raw = proc.process_file(path)
@@ -73,14 +75,16 @@ def render_warehouse_tab():
                         # Шаг 3: Завершение
                         my_bar.progress(100, text="Готово!")
 
-                        st.rerun()
+                        # Удаляем временный файл сразу после обработки
+                        if os.path.exists(path):
+                            os.remove(path)
+
+                    st.rerun()
 
                 if 'ocr_data' in st.session_state and st.session_state['ocr_data']:
-
-                    # ... (выше код)
                     st.markdown("### 📝 Проверьте данные:")
 
-                    new_data = []  # Инициализируем здесь
+                    new_data = []
 
                     for i, entry in enumerate(st.session_state['ocr_data']):
                         row_id = entry.get('id', i)
@@ -101,11 +105,10 @@ def render_warehouse_tab():
                                 st.session_state['ocr_data'].pop(i)
                                 st.rerun()
 
-                        # ВОТ ЭТО БЫЛО ПРОПУЩЕНО:
                         new_data.append({'item': item, 'qty': qty, 'price': price})
 
                     if st.button(":white_check_mark: Подтвердить оприходование"):
-                        if new_data:  # Проверяем, что список не пустой
+                        if new_data:
                             for data in new_data:
                                 execute_query(
                                     "INSERT INTO inventory (date, item, qty, price, reason) VALUES (%s, %s, %s, %s, %s)",
@@ -113,7 +116,6 @@ def render_warehouse_tab():
 
                             st.success("Данные успешно сохранены!")
                             del st.session_state['ocr_data']
-                            if os.path.exists(path): os.remove(path)
                             st.rerun()
                         else:
                             st.warning("Список товаров пуст!")

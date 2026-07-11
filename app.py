@@ -1,134 +1,174 @@
-import os
-os.environ['PYTHONIOENCODING'] = 'utf-8'
-os.environ['LANG'] = 'ru_RU.UTF-8'
-os.environ['LC_ALL'] = 'ru_RU.UTF-8'
 import streamlit as st
 import datetime
-from database.connection import init_db, execute_query
-from gui.kassa import render_kassa_tab
-from gui.warehouse import render_warehouse_tab
-from gui.history import render_history_tab
-from gui.menu_manager import render_menu_manager_tab
-from utils.printing import trigger_silent_print, trigger_z_report_print
+import os
+from tabs.warehouse_tab import render_warehouse_tab
 
-# ❌ УБИРАЕМ ЭТОТ КОД (вызывает ошибку):
-# import sys
-# import io
-# import os
-#
-# try:
-#     if hasattr(sys.stdout, 'buffer'):
-#         sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-#     if hasattr(sys.stderr, 'buffer'):
-#         sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
-# except Exception as e:
-#     print(f"⚠️ Не удалось установить UTF-8 для stdout: {e}")
-
-
-# 1. НАСТРОЙКА СТРАНИЦЫ (ДОЛЖНА БЫТЬ ПЕРВОЙ)
+# Настройка страницы (ДОЛЖНА БЫТЬ ПЕРВОЙ КОМАНДОЙ Streamlit)
 st.set_page_config(
+    page_title="📊 Система управления складом",
+    page_icon="📦",
     layout="wide",
-    page_title="POS-Терминал VOXYS",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed"
 )
 
 
-# 2. ИНИЦИАЛИЗАЦИЯ БАЗЫ ДАННЫХ
-@st.cache_resource
-def setup_application():
-    init_db()
-    return True
+# Кэширование функции для получения данных склада
+@st.cache_data(ttl=300)  # Кэш на 5 минут
+def get_inventory_data():
+    """Кэшированное получение данных склада"""
+    from database.connection import execute_query
+    result = execute_query("SELECT item, SUM(qty) FROM inventory GROUP BY item", fetch="all")
+    return result
 
 
-setup_application()
+# Кэширование функции для получения истории
+@st.cache_data(ttl=600)  # Кэш на 10 минут
+def get_inventory_history(days=7):
+    """Кэшированное получение истории за последние N дней"""
+    from database.connection import execute_query
+    result = execute_query(
+        "SELECT date, item, qty, price, reason FROM inventory WHERE date >= DATE_SUB(CURDATE(), INTERVAL %s DAY) ORDER BY date DESC",
+        (days,),
+        fetch="all"
+    )
+    return result
 
-# 3. УПРАВЛЕНИЕ СЕССИЕЙ
-if "authenticated" not in st.session_state: st.session_state.authenticated = False
-if "user_role" not in st.session_state: st.session_state.user_role = None
-if "current_active_order_id" not in st.session_state: st.session_state.current_active_order_id = None
 
-# --- ОКНО ВХОДА ---
-if not st.session_state.authenticated:
-    st.markdown("<h1 style='text-align: center;'>🔒 Вход в систему VOXYS</h1>", unsafe_allow_html=True)
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        username = st.text_input("Логин:")
-        password = st.text_input("Пароль:", type="password")
-        if st.button("Войти", use_container_width=True):
-            if username == "admin" and password == "1111":
-                st.session_state.authenticated = True
-                st.session_state.user_role = "Администратор"
-                st.rerun()
-            elif username == "manager" and password == "2222":
-                st.session_state.authenticated = True
-                st.session_state.user_role = "Менеджер"
-                st.rerun()
-            elif username == "kassa" and password == "3333":
-                st.session_state.authenticated = True
-                st.session_state.user_role = "Кассир"
-                st.rerun()
+def render_inventory_summary():
+    """Отображение сводки по складу с кэшированными данными"""
+    cursor_summary = get_inventory_data()
+
+    if cursor_summary:
+        # Сортировка по остаткам (сначала критичные)
+        sorted_items = sorted(cursor_summary, key=lambda x: x[1])
+
+        for row in sorted_items:
+            item_name, current_qty = row[0], row[1]
+            if current_qty <= 5.0:
+                st.error(f"🚨 **{item_name}**: {current_qty:.3f} кг/шт")
+            elif current_qty <= 20.0:
+                st.warning(f"⚠️ **{item_name}**: {current_qty:.3f} кг/шт")
             else:
-                st.error("❌ Неверный логин или пароль!")
-    st.stop()
-
-# --- ОСНОВНОЙ ИНТЕРФЕЙС (Если авторизован) ---
-
-# Боковая панель
-with st.sidebar:
-    st.title(f"VOXYS | {st.session_state.user_role}")
-    st.image("voxys_foto_logo2.png", use_container_width=True)
-
-
-
-    st.write("---")
-    if st.button("🚪 Выйти из системы"):
-        st.session_state.authenticated = False
-        st.session_state.user_role = None
-        st.rerun()
-
-# Обработка отложенных событий печати
-if "just_paid_order_data" in st.session_state and st.session_state.just_paid_order_data:
-    p = st.session_state.just_paid_order_data
-    trigger_silent_print(p["name"], p["cart"], p["prices"], p["discount"], p["method"], p["id"])
-    st.session_state.just_paid_order_data = None
-
-# Определение вкладок
-role = st.session_state.user_role
-tabs_config = {
-    "Кассир": ["🛒 Продажи", "📜 История"],
-    "Менеджер": ["🛒 Продажи", "📦 Склад", "📜 История"],
-    "Администратор": ["🛒 Продажи", "📦 Склад", "📋 Меню", "📜 История"]
-}
-
-# Рендеринг
-try:
-    if role in tabs_config:
-        tabs = st.tabs(tabs_config[role])
-
-        # Индексация вкладок в зависимости от роли
-        if role == "Администратор":
-            with tabs[0]:
-                render_kassa_tab()
-            with tabs[1]:
-                render_warehouse_tab()
-            with tabs[2]:
-                render_menu_manager_tab()
-            with tabs[3]:
-                render_history_tab()
-        elif role == "Менеджер":
-            with tabs[0]:
-                render_kassa_tab()
-            with tabs[1]:
-                render_warehouse_tab()
-            with tabs[2]:
-                render_history_tab()
-        elif role == "Кассир":
-            with tabs[0]:
-                render_kassa_tab()
-            with tabs[1]:
-                render_history_tab()
+                st.success(f"📦 **{item_name}**: {current_qty:.3f} кг/шт")
     else:
-        st.error(f"Неизвестная роль: {role}")
-except Exception as e:
-    st.error(f"Ошибка при отрисовке интерфейса: {e}")
-    st.exception(e)
+        st.info("Склад пуст")
+
+
+def main():
+    # Заголовок приложения
+    st.title("📊 Система управления складом")
+
+    # Текущая дата
+    st.caption(f"📅 Сегодня: {datetime.datetime.now().strftime('%d.%m.%Y %H:%M')}")
+
+    # Создаем вкладки
+    tab1, tab2, tab3 = st.tabs(["📦 Склад", "📈 История операций", "⚙️ Настройки"])
+
+    with tab1:
+        # Отображение сводки
+        st.markdown("### 📋 Текущие остатки")
+        render_inventory_summary()
+
+        st.write("---")
+
+        # Вкладка склада (приход/расход)
+        render_warehouse_tab()
+
+    with tab2:
+        st.markdown("### 📜 История операций")
+
+        # Фильтры для истории
+        col1, col2 = st.columns(2)
+        with col1:
+            days = st.selectbox("Период:", [7, 14, 30, 90, 365], index=0)
+        with col2:
+            # Получаем список всех товаров для фильтра
+            inventory_data = get_inventory_data()
+            if inventory_data:
+                items = ["Все"] + [row[0] for row in inventory_data]
+                filter_item = st.selectbox("Фильтр по товару:", items)
+            else:
+                filter_item = "Все"
+
+        # Получаем историю
+        history = get_inventory_history(days)
+
+        if history:
+            # Применяем фильтр
+            if filter_item != "Все":
+                history = [row for row in history if row[1] == filter_item]
+
+            # Отображаем в таблице
+            import pandas as pd
+            df = pd.DataFrame(history, columns=["Дата", "Товар", "Кол-во", "Цена", "Причина"])
+            df["Кол-во"] = df["Кол-во"].astype(float).round(3)
+            df["Цена"] = df["Цена"].astype(float).round(2)
+
+            # Цветовое выделение
+            def color_qty(val):
+                color = 'red' if val < 0 else 'green'
+                return f'color: {color}'
+
+            st.dataframe(
+                df.style.applymap(color_qty, subset=['Кол-во']),
+                use_container_width=True,
+                hide_index=True
+            )
+
+            # Статистика
+            st.markdown("### 📊 Статистика за период")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                total_in = df[df['Кол-во'] > 0]['Кол-во'].sum()
+                st.metric("📥 Всего приход", f"{total_in:.3f} ед.")
+            with col2:
+                total_out = abs(df[df['Кол-во'] < 0]['Кол-во'].sum())
+                st.metric("📤 Всего расход", f"{total_out:.3f} ед.")
+            with col3:
+                operations = len(df)
+                st.metric("🔄 Операций", f"{operations}")
+        else:
+            st.info("Нет данных за выбранный период")
+
+    with tab3:
+        st.markdown("### ⚙️ Настройки системы")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("#### 🗄️ База данных")
+            if st.button("🔄 Обновить кэш данных"):
+                st.cache_data.clear()
+                st.success("Кэш очищен!")
+                st.rerun()
+
+            if st.button("📊 Показать статистику БД"):
+                from database.connection import execute_query
+                count = execute_query("SELECT COUNT(*) FROM inventory", fetch="one")
+                if count:
+                    st.info(f"Всего записей в БД: {count[0]}")
+
+        with col2:
+            st.markdown("#### 🤖 Настройки OCR")
+            st.info("Модель EasyOCR загружена в память")
+            if st.button("🔄 Перезагрузить OCR модель"):
+                st.cache_resource.clear()
+                st.success("OCR модель будет перезагружена при следующем вызове")
+                st.rerun()
+
+        st.markdown("---")
+        st.markdown("#### 🧹 Очистка временных файлов")
+        if st.button("🗑️ Удалить все временные файлы"):
+            temp_files = [f for f in os.listdir('.') if f.startswith('temp_')]
+            deleted = 0
+            for f in temp_files:
+                try:
+                    os.remove(f)
+                    deleted += 1
+                except:
+                    pass
+            st.success(f"Удалено {deleted} временных файлов")
+
+
+if __name__ == "__main__":
+    main()

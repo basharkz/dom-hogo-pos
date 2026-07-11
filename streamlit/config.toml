@@ -1,0 +1,21 @@
+[theme]
+base = "light"
+
+[server]
+# Максимальный размер загружаемого файла (в МБ)
+maxUploadSize = 10
+# Отключить CORS для локальной разработки
+enableCORS = false
+enableXsrfProtection = false
+
+[browser]
+# Отключить сбор статистики
+gatherUsageStats = false
+
+[runner]
+# Ускорить перезапуск при изменениях
+fastReruns = true
+
+[logger]
+# Уровень логирования (можно установить "error" для меньше логов)
+level = "error"
