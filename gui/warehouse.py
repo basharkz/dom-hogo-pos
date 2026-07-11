@@ -54,17 +54,27 @@ def render_warehouse_tab():
 
                 if st.button("🚀 Распознать накладную"):
                     with st.spinner("ИИ анализирует накладную..."):
+                        # ... (твой код до этого места)
                         proc = DocumentProcessor()
                         raw = proc.process_image(path)
-                        data = proc.extract_structured_data(raw)
+                        data_list = proc.extract_structured_data(raw)  # Теперь это список словарей
 
-                        st.write(f"**Найдено:** {data['item']} | **Кол-во:** {data['qty']}")
+                        # Отображаем всё, что нашел ИИ
+                        for data in data_list:
+                            st.write(
+                                f"**Найдено:** {data.get('item', 'Без имени')} | **Кол-во:** {data.get('qty', '0')}")
 
-                        if st.button("✅ Подтвердить и сохранить"):
-                            execute_query(
-                                "INSERT INTO inventory (date, item, qty, price, reason) VALUES (%s, %s, %s, %s, %s)",
-                                (str(datetime.date.today()), data['item'], data['qty'], data['price'], "OCR Закуп"))
-                            st.success("Данные из накладной добавлены в базу!")
+                        # Кнопка подтверждения должна быть вне цикла
+                        if st.button("✅ Подтвердить и сохранить все"):
+                            for data in data_list:
+                                execute_query(
+                                    "INSERT INTO inventory (date, item, qty, price, reason) VALUES (%s, %s, %s, %s, %s)",
+                                    (str(datetime.date.today()),
+                                     data.get('item', 'Без имени'),
+                                     data.get('qty', 0),
+                                     data.get('price', 0),
+                                     "OCR Закуп"))
+                            st.success("Все данные из накладной добавлены в базу!")
                             os.remove(path)
                             st.rerun()
 

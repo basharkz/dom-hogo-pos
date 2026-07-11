@@ -39,10 +39,12 @@ class DocumentProcessor:
             return []
 
     def extract_structured_data(self, raw_data):
-        """
-        Метод для обработки сырого текста и передачи в интерфейс.
-        """
-        structured_data = {
-            "Распознанные строки": raw_data
-        }
+        # Превращаем каждую строку в словарь для таблицы
+        structured_data = []
+        for line in raw_data:
+            structured_data.append({
+                'item': line,
+                'qty': 1.0,  # Ставим число по умолчанию
+                'price': 0.0 # Ставим цену по умолчанию
+            })
         return structured_data
