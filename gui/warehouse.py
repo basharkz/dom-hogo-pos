@@ -73,13 +73,15 @@ def render_warehouse_tab():
                         to_remove = None
 
                         for i, entry in enumerate(st.session_state['ocr_data']):
-                            col1, col2, col3 = st.columns([3, 1, 1])  # Делим на три колонки
+                            col1, col2, col3, col4 = st.columns([3, 1, 1, 1])  # Делим на три колонки
 
                             with col1:
                                 item = st.text_input(f"Товар", value=entry.get('item', ''), key=f"item_{i}")
                             with col2:
                                 qty = st.number_input(f"Кол-во", value=float(entry.get('qty', 1.0)), key=f"qty_{i}")
                             with col3:
+                                qty = st.number_input(f"Цена", value=float(entry.get('qty', 1.0)), key=f"qty_{i}")
+                            with col4:
                                 st.write("###")  # Отступ для выравнивания
                                 if st.button("🗑️", key=f"del_{i}"):
                                     to_remove = i  # Помечаем этот индекс на удаление
@@ -92,6 +94,23 @@ def render_warehouse_tab():
                             st.rerun()  # Перезагружаем страницу, чтобы список обновился
 
                         # ... (далее идет кнопка сохранения)
+
+                    if st.button("✅ Сохранить в базу"):
+
+                        for data in final_data:
+                            execute_query(
+
+                                "INSERT INTO inventory (date, item, qty, price, reason) VALUES (%s, %s, %s, %s, %s)",
+
+                                (str(datetime.date.today()), data['item'], data['qty'], 0.0, "OCR Закуп"))
+
+                        st.success("Данные успешно сохранены!")
+
+                        del st.session_state['ocr_data']
+
+                        os.remove(path)
+
+                        st.rerun()
 
     # --- КОЛОНКА 2: СПИСАНИЕ ---
     with inv_col2:
