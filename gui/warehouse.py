@@ -41,54 +41,81 @@ def render_warehouse_tab():
                     st.success("Успешно добавлено!")
                     st.rerun()
 
+
         else:  # РЕЖИМ OCR
+
             uploaded_file = st.file_uploader("Выберите документ:", type=['jpg', 'jpeg', 'png', 'pdf', 'xlsx'])
 
             if uploaded_file:
+
                 path = f"temp_doc{os.path.splitext(uploaded_file.name)[1]}"
+
                 with open(path, "wb") as f:
+
                     f.write(uploaded_file.getbuffer())
 
                 if st.button("🚀 Распознать документ"):
-                    with st.spinner("Анализирую документ..."):
+                    with st.spinner("Анализирую..."):
                         proc = DocumentProcessor()
+
                         raw = proc.process_file(path)
+
                         st.session_state['ocr_data'] = proc.extract_structured_data(raw)
+
                         st.rerun()
 
                 if 'ocr_data' in st.session_state and st.session_state['ocr_data']:
+
                     st.markdown("### 📝 Проверьте данные:")
 
+                    # Логика обновления данных без перезагрузки системы
+
                     new_data = []
-                    # Отображаем текущие данные из session_state
+
                     for i, entry in enumerate(st.session_state['ocr_data']):
+
                         row_id = entry.get('id', i)
 
                         col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
+
                         with col1:
+
                             item = st.text_input("Товар", value=entry.get('item', ''), key=f"item_{row_id}")
+
                         with col2:
+
                             qty = st.number_input("Кол-во", value=float(entry.get('qty', 1.0)), key=f"qty_{row_id}")
+
                         with col3:
+
                             price = st.number_input("Цена", value=float(entry.get('price', 0.0)), key=f"price_{row_id}")
+
                         with col4:
+
                             st.write("###")
+
                             if st.button("❌", key=f"del_{row_id}"):
-                                # Просто удаляем из списка session_state
                                 st.session_state['ocr_data'].pop(i)
+
                                 st.rerun()
 
                         new_data.append({'item': item, 'qty': qty, 'price': price, 'id': row_id})
 
                     if st.button("✅ Сохранить в базу"):
+
                         for data in new_data:
                             execute_query(
+
                                 "INSERT INTO inventory (date, item, qty, price, reason) VALUES (%s, %s, %s, %s, %s)",
+
                                 (str(datetime.date.today()), data['item'], data['qty'], data['price'], "OCR Закуп"))
 
                         st.success("Данные успешно сохранены!")
+
                         del st.session_state['ocr_data']
-                        os.remove(path)
+
+                        if os.path.exists(path): os.remove(path)
+
                         st.rerun()
 
     # --- КОЛОНКА 2: СПИСАНИЕ ---
