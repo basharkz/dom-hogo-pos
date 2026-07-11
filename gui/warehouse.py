@@ -6,7 +6,7 @@ from ai_modules.ocr_engine import DocumentProcessor
 
 
 def render_warehouse_tab():
-    st.subheader("📦 Учет остатков на складе")
+    st.markdown("### :package: Учет складских запасов") # Более строгий стиль
 
     # Получение текущих остатков
     cursor_summary = execute_query("SELECT item, SUM(qty) FROM inventory GROUP BY item", fetch="all")
@@ -26,8 +26,8 @@ def render_warehouse_tab():
 
     # --- КОЛОНКА 1: ПРИХОД ---
     with inv_col1:
-        st.markdown("#### 📥 Приход товара")
-        import_type = st.radio("Способ добавления:", ["Вручную", "Загрузить фото (OCR)"])
+        st.markdown("#### :inbox_tray: Приход сырья")
+        import_type = st.radio("Способ добавления:", ["Вручную", "Загрузить файл (OCR)"])
 
         if import_type == "Вручную":
             in_item = st.text_input("Название сырья:")
@@ -54,7 +54,7 @@ def render_warehouse_tab():
 
                     f.write(uploaded_file.getbuffer())
 
-                if st.button("🚀 Распознать документ"):
+                if st.button(":rocket: Распознать документ", use_container_width=True):
                     with st.spinner("Анализирую..."):
                         proc = DocumentProcessor()
 
@@ -66,61 +66,50 @@ def render_warehouse_tab():
 
                 if 'ocr_data' in st.session_state and st.session_state['ocr_data']:
 
+                    # ... (выше код)
                     st.markdown("### 📝 Проверьте данные:")
 
-                    # Логика обновления данных без перезагрузки системы
-
-                    new_data = []
+                    new_data = []  # Инициализируем здесь
 
                     for i, entry in enumerate(st.session_state['ocr_data']):
-
                         row_id = entry.get('id', i)
 
                         col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
-
                         with col1:
-
-                            item = st.text_input("Товар", value=entry.get('item', ''), key=f"item_{row_id}")
-
+                            item = st.text_input("Товар", value=entry.get('item', ''), key=f"item_{row_id}",
+                                                 label_visibility="collapsed")
                         with col2:
-
-                            qty = st.number_input("Кол-во", value=float(entry.get('qty', 1.0)), key=f"qty_{row_id}")
-
+                            qty = st.number_input("Кол-во", value=float(entry.get('qty', 1.0)), key=f"qty_{row_id}",
+                                                  label_visibility="collapsed")
                         with col3:
-
-                            price = st.number_input("Цена", value=float(entry.get('price', 0.0)), key=f"price_{row_id}")
-
+                            price = st.number_input("Цена", value=float(entry.get('price', 0.0)), key=f"price_{row_id}",
+                                                    label_visibility="collapsed")
                         with col4:
-
                             st.write("###")
-
                             if st.button("❌", key=f"del_{row_id}"):
                                 st.session_state['ocr_data'].pop(i)
-
                                 st.rerun()
 
-                        new_data.append({'item': item, 'qty': qty, 'price': price, 'id': row_id})
+                        # ВОТ ЭТО БЫЛО ПРОПУЩЕНО:
+                        new_data.append({'item': item, 'qty': qty, 'price': price})
 
-                    if st.button("✅ Сохранить в базу"):
+                    if st.button(":white_check_mark: Подтвердить оприходование"):
+                        if new_data:  # Проверяем, что список не пустой
+                            for data in new_data:
+                                execute_query(
+                                    "INSERT INTO inventory (date, item, qty, price, reason) VALUES (%s, %s, %s, %s, %s)",
+                                    (str(datetime.date.today()), data['item'], data['qty'], data['price'], "OCR Закуп"))
 
-                        for data in new_data:
-                            execute_query(
-
-                                "INSERT INTO inventory (date, item, qty, price, reason) VALUES (%s, %s, %s, %s, %s)",
-
-                                (str(datetime.date.today()), data['item'], data['qty'], data['price'], "OCR Закуп"))
-
-                        st.success("Данные успешно сохранены!")
-
-                        del st.session_state['ocr_data']
-
-                        if os.path.exists(path): os.remove(path)
-
-                        st.rerun()
+                            st.success("Данные успешно сохранены!")
+                            del st.session_state['ocr_data']
+                            if os.path.exists(path): os.remove(path)
+                            st.rerun()
+                        else:
+                            st.warning("Список товаров пуст!")
 
     # --- КОЛОНКА 2: СПИСАНИЕ ---
     with inv_col2:
-        st.markdown("#### 🗑️ Списание и Брак")
+        st.markdown("#### :wastebasket: Списание и потери")
         if not all_inventory_items:
             st.info("Склад пуст.")
         else:
