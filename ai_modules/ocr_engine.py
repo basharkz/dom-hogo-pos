@@ -7,8 +7,9 @@ import numpy as np
 
 class DocumentProcessor:
     def __init__(self):
-        # Инициализируем модель OCR (ставим gpu=False, если нет мощной видеокарты)
-        self.reader = easyocr.Reader(['ru', 'en'], gpu=False)
+        # Добавляем model_storage_directory для кэширования
+        # и ограничиваем размер модели, если нужно
+        self.reader = easyocr.Reader(['ru', 'en'], gpu=False, model_storage_directory='~/.EasyOCR/')
         print("--- VOXYS AI OCR Module Initialized ---")
 
     def process_image(self, image_path):
