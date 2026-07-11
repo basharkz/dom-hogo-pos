@@ -1,50 +1,54 @@
 import easyocr
 import cv2
 import os
+import fitz  # PyMuPDF
+import pandas as pd
 
 
 class DocumentProcessor:
     def __init__(self):
-        """
-        Инициализируем класс и сразу загружаем модель в память,
-        так как ресурсов сервера (8 ГБ RAM) теперь достаточно.
-        """
-        print("--- Инициализация VOXYS AI OCR Module ---")
         self.model_storage = os.path.expanduser('~/.EasyOCR')
-        # Сразу загружаем и русский, и английский языки
         self.reader = easyocr.Reader(['ru', 'en'], gpu=False, model_storage_directory=self.model_storage)
-        print("--- Модели успешно загружены ---")
 
-    def process_image(self, image_path):
+    def process_file(self, file_path):
         """
-        Основной метод для распознавания текста на картинке.
+        Универсальный метод: определяет тип файла и извлекает текст.
         """
-        try:
-            # Читаем изображение через OpenCV
-            img = cv2.imread(image_path)
-            if img is None:
-                print("Ошибка: не удалось прочитать изображение")
-                return []
+        ext = os.path.splitext(file_path)[1].lower()
 
-            # Переводим в градации серого для улучшения распознавания
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        if ext in ['.jpg', '.jpeg', '.png']:
+            return self._process_image(file_path)
 
-            # Распознаем текст (detail=0 возвращает только список строк)
-            results = self.reader.readtext(gray, detail=0)
+        elif ext == '.pdf':
+            return self._process_pdf(file_path)
 
-            return results
+        elif ext in ['.xlsx', '.xls']:
+            return self._process_excel(file_path)
 
-        except Exception as e:
-            print(f"Критическая ошибка при обработке изображения: {e}")
-            return []
+        else:
+            return ["Неподдерживаемый формат"]
+
+    def _process_image(self, path):
+        img = cv2.imread(path)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        return self.reader.readtext(gray, detail=0)
+
+    def _process_pdf(self, path):
+        # Превращаем первую страницу PDF в картинку и распознаем
+        doc = fitz.open(path)
+        page = doc.load_page(0)
+        pix = page.get_pixmap()
+        pix.save("temp_pdf_page.jpg")
+        return self._process_image("temp_pdf_page.jpg")
+
+    def _process_excel(self, path):
+        # Читаем таблицу и превращаем всё содержимое в список строк
+        df = pd.read_excel(path)
+        text_list = []
+        for col in df.columns:
+            text_list.append(str(col))
+            text_list.extend(df[col].astype(str).tolist())
+        return text_list
 
     def extract_structured_data(self, raw_data):
-        # Превращаем каждую строку в словарь для таблицы
-        structured_data = []
-        for line in raw_data:
-            structured_data.append({
-                'item': line,
-                'qty': 1.0,  # Ставим число по умолчанию
-                'price': 0.0 # Ставим цену по умолчанию
-            })
-        return structured_data
+        return [{'item': str(line), 'qty': 1.0} for line in raw_data if len(str(line)) > 2]

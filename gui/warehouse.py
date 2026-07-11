@@ -43,40 +43,68 @@ def render_warehouse_tab():
                     st.success("Успешно добавлено!")
                     st.rerun()
 
+
         else:  # РЕЖИМ OCR
+
             uploaded_file = st.file_uploader("Выберите фото накладной:", type=['jpg', 'jpeg', 'png'])
+
             if uploaded_file:
+
                 path = "temp_scan.jpg"
+
                 with open(path, "wb") as f:
+
                     f.write(uploaded_file.getbuffer())
 
                 st.image(path, caption="Ваша накладная")
 
                 if st.button("🚀 Распознать накладную"):
-                    with st.spinner("ИИ анализирует накладную..."):
-                        # ... (твой код до этого места)
+                    with st.spinner("ИИ анализирует..."):
                         proc = DocumentProcessor()
+
                         raw = proc.process_image(path)
-                        data_list = proc.extract_structured_data(raw)  # Теперь это список словарей
 
-                        # Отображаем всё, что нашел ИИ
-                        for data in data_list:
-                            st.write(
-                                f"**Найдено:** {data.get('item', 'Без имени')} | **Кол-во:** {data.get('qty', '0')}")
+                        # Сохраняем результат в session_state, чтобы он не пропадал при правке
 
-                        # Кнопка подтверждения должна быть вне цикла
-                        if st.button("✅ Подтвердить и сохранить все"):
-                            for data in data_list:
-                                execute_query(
-                                    "INSERT INTO inventory (date, item, qty, price, reason) VALUES (%s, %s, %s, %s, %s)",
-                                    (str(datetime.date.today()),
-                                     data.get('item', 'Без имени'),
-                                     data.get('qty', 0),
-                                     data.get('price', 0),
-                                     "OCR Закуп"))
-                            st.success("Все данные из накладной добавлены в базу!")
-                            os.remove(path)
-                            st.rerun()
+                        st.session_state['ocr_data'] = proc.extract_structured_data(raw)
+
+                # Если данные распознаны, выводим их в редактируемые поля
+
+                if 'ocr_data' in st.session_state:
+
+                    st.write("---")
+
+                    st.markdown("### 📝 Проверьте и отредактируйте данные:")
+
+                    final_data = []
+
+                    for i, entry in enumerate(st.session_state['ocr_data']):
+                        col1, col2 = st.columns(2)
+
+                        with col1:
+                            item = st.text_input(f"Товар {i + 1}", value=entry.get('item', ''), key=f"item_{i}")
+
+                        with col2:
+                            qty = st.number_input(f"Кол-во {i + 1}", value=float(entry.get('qty', 1.0)), key=f"qty_{i}")
+
+                        final_data.append({'item': item, 'qty': qty})
+
+                    if st.button("✅ Сохранить в базу"):
+
+                        for data in final_data:
+                            execute_query(
+
+                                "INSERT INTO inventory (date, item, qty, price, reason) VALUES (%s, %s, %s, %s, %s)",
+
+                                (str(datetime.date.today()), data['item'], data['qty'], 0.0, "OCR Закуп"))
+
+                        st.success("Данные успешно сохранены!")
+
+                        del st.session_state['ocr_data']
+
+                        os.remove(path)
+
+                        st.rerun()
 
     # --- КОЛОНКА 2: СПИСАНИЕ ---
     with inv_col2:
