@@ -69,6 +69,22 @@ def render_menu_manager_tab():
                         st.success(f"Ингредиент {rec_ing} добавлен!")
                         st.rerun()
 
+            # --- ОТЛАДОЧНЫЙ БЛОК ВЫНОСИМ СЮДА ---
+            # Теперь он работает независимо от нажатия кнопки и показывает текущую ситуацию
+            st.write("---")
+            st.markdown(f"🛠 **Отладка: Что сейчас реально лежит в базе для '{selected_dish_rec}'?**")
+
+            check_recipes = execute_query("SELECT * FROM recipes WHERE dish = %s", (selected_dish_rec,), fetch="all")
+            if check_recipes:
+                st.dataframe(check_recipes)  # Выведет таблицу на экран
+            else:
+                st.warning("В базе пока нет ингредиентов для этого блюда.")
+
+            check_inventory = execute_query("SELECT item, price FROM inventory", fetch="all")
+            st.write("Товары на складе (для расчета себестоимости):")
+            st.dataframe(check_inventory)
+            # --- КОНЕЦ ОТЛАДОЧНОГО БЛОКА ---
+
             # Отображение аналитики
             dish_sale_price = next((r[1] for r in all_dishes_rows if r[0] == selected_dish_rec), 0)
             food_cost = calculate_dish_food_cost(selected_dish_rec)
