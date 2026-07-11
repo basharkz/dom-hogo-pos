@@ -1,12 +1,10 @@
-# Минимальный набор для быстрой установки
 streamlit
 easyocr
 opencv-python-headless
 numpy
 pandas
 psycopg2-binary
-pymupdf
-openpyxl
 pillow
 requests
-python-dotenv
+pymupdf
+openpyxl
