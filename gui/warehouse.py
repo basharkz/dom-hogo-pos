@@ -73,20 +73,26 @@ def render_warehouse_tab():
                         to_remove = None
 
                         for i, entry in enumerate(st.session_state['ocr_data']):
-                            col1, col2, col3, col4 = st.columns([3, 1, 1, 1])  # Делим на три колонки
+                            # Делим на 4 колонки: Название, Кол-во, Цена, Удаление
+                            col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
 
                             with col1:
+                                # Уникальный ключ для названия
                                 item = st.text_input(f"Товар", value=entry.get('item', ''), key=f"item_{i}")
                             with col2:
+                                # Уникальный ключ для кол-ва
                                 qty = st.number_input(f"Кол-во", value=float(entry.get('qty', 1.0)), key=f"qty_{i}")
                             with col3:
-                                qty = st.number_input(f"Цена", value=float(entry.get('qty', 1.0)), key=f"qty_{i}")
+                                # Уникальный ключ для цены (изменили на price_{i})
+                                price = st.number_input(f"Цена", value=float(entry.get('price', 0.0)), key=f"price_{i}")
                             with col4:
-                                st.write("###")  # Отступ для выравнивания
+                                st.write("###")
                                 if st.button("🗑️", key=f"del_{i}"):
-                                    to_remove = i  # Помечаем этот индекс на удаление
+                                    st.session_state['ocr_data'].pop(i)
+                                    st.rerun()
 
-                            final_data.append({'item': item, 'qty': qty})
+                            # Сохраняем все данные в список
+                            final_data.append({'item': item, 'qty': qty, 'price': price})
 
                         # Логика удаления
                         if to_remove is not None:
