@@ -46,27 +46,20 @@ def render_warehouse_tab():
 
         else:  # РЕЖИМ OCR
 
-            uploaded_file = st.file_uploader("Выберите фото накладной:", type=['jpg', 'jpeg', 'png'])
+            # Найди строку с file_uploader и замени тип на:
+            uploaded_file = st.file_uploader("Выберите документ:", type=['jpg', 'jpeg', 'png', 'pdf', 'xlsx'])
 
             if uploaded_file:
-
-                path = "temp_scan.jpg"
-
+                path = f"temp_doc{os.path.splitext(uploaded_file.name)[1]}"
                 with open(path, "wb") as f:
-
                     f.write(uploaded_file.getbuffer())
 
-                st.image(path, caption="Ваша накладная")
-
-                if st.button("🚀 Распознать накладную"):
-                    with st.spinner("ИИ анализирует..."):
+                if st.button("🚀 Распознать документ"):
+                    with st.spinner("Анализирую документ..."):
                         proc = DocumentProcessor()
-
-                        raw = proc.process_image(path)
-
-                        # Сохраняем результат в session_state, чтобы он не пропадал при правке
-
+                        raw = proc.process_file(path)  # Используем новый универсальный метод
                         st.session_state['ocr_data'] = proc.extract_structured_data(raw)
+                        # ... (остальной код отображения колонок остается таким же)
 
                 # Если данные распознаны, выводим их в редактируемые поля
 
