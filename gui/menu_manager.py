@@ -48,20 +48,28 @@ def render_menu_manager_tab():
         all_dishes_rows = execute_query("SELECT dish_name, price FROM menu", fetch="all")
         list_dishes_for_recipes = [r[0] for r in all_dishes_rows] if all_dishes_rows else []
 
+        # Получаем список ингредиентов из таблицы inventory
+        inv_items = execute_query("SELECT DISTINCT item FROM inventory", fetch="all")
+        inv_items_list = [r[0] for r in inv_items] if inv_items else []
+
         if not list_dishes_for_recipes:
             st.info("Создайте блюда.")
+        elif not inv_items_list:
+            st.info("Сначала добавьте сырье на склад (инвентарь).")
         else:
-            selected_dish_rec = st.selectbox("Выберите блюдо:", list_dishes_for_recipes)
-            rec_ing = st.text_input("Ингредиент со склада:", key="ing_field")
-            rec_qty = st.number_input("Вес/кол-во на 1 порцию:", min_value=0.001, step=0.01, format="%.3f")
+            with st.form("recipe_form", clear_on_submit=True):
+                selected_dish_rec = st.selectbox("Выберите блюдо:", list_dishes_for_recipes)
+                rec_ing = st.selectbox("Ингредиент со склада:", inv_items_list)
+                rec_qty = st.number_input("Вес/кол-во на 1 порцию:", min_value=0.001, step=0.01, format="%.3f")
 
-            if st.button("🔗 Добавить в рецепт"):
-                if rec_ing and rec_qty > 0:
-                    execute_query("INSERT INTO recipes (dish, ingredient, qty_needed) VALUES (%s, %s, %s)",
-                                  (selected_dish_rec, rec_ing, rec_qty))
-                    st.success("Ингредиент добавлен!")
-                    st.rerun()
+                if st.form_submit_button("🔗 Добавить в рецепт"):
+                    if rec_ing and rec_qty > 0:
+                        execute_query("INSERT INTO recipes (dish, ingredient, qty_needed) VALUES (%s, %s, %s)",
+                                      (selected_dish_rec, rec_ing, rec_qty))
+                        st.success(f"Ингредиент {rec_ing} добавлен!")
+                        st.rerun()
 
+            # Отображение аналитики
             dish_sale_price = next((r[1] for r in all_dishes_rows if r[0] == selected_dish_rec), 0)
             food_cost = calculate_dish_food_cost(selected_dish_rec)
             margin = dish_sale_price - food_cost
@@ -71,9 +79,7 @@ def render_menu_manager_tab():
 
             if user_role == "Администратор":
                 st.write("---")
-                st.markdown("⚠️ **Опасная зона (Админ)**")
-                if st.button(f"🗑️ Полностью удалить блюдо '{selected_dish_rec}'", type="secondary", use_container_width=True):
-                    execute_query("DELETE FROM menu WHERE dish_name = %s", (selected_dish_rec,))
+                if st.button(f"🗑️ Удалить рецепт блюда '{selected_dish_rec}'"):
                     execute_query("DELETE FROM recipes WHERE dish = %s", (selected_dish_rec,))
-                    st.success(f"Блюдо '{selected_dish_rec}' и его рецепт успешно удалены!")
+                    st.success(f"Рецепт блюда '{selected_dish_rec}' удален!")
                     st.rerun()
