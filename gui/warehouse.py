@@ -8,11 +8,10 @@ from ai_modules.ocr_engine import DocumentProcessor
 def render_warehouse_tab():
     st.subheader("📦 Учет остатков на складе")
 
-    # Получение текущих остатков из БД
+    # Получение текущих остатков
     cursor_summary = execute_query("SELECT item, SUM(qty) FROM inventory GROUP BY item", fetch="all")
     all_inventory_items = [row[0] for row in cursor_summary] if cursor_summary else []
 
-    # Отображение остатков
     if cursor_summary:
         for row in cursor_summary:
             item_name, current_qty = row[0], row[1]
@@ -23,7 +22,6 @@ def render_warehouse_tab():
 
     st.write("---")
 
-    # Создаем две колонки для интерфейса
     inv_col1, inv_col2 = st.columns(2)
 
     # --- КОЛОНКА 1: ПРИХОД ---
@@ -43,10 +41,7 @@ def render_warehouse_tab():
                     st.success("Успешно добавлено!")
                     st.rerun()
 
-
         else:  # РЕЖИМ OCR
-
-            # Найди строку с file_uploader и замени тип на:
             uploaded_file = st.file_uploader("Выберите документ:", type=['jpg', 'jpeg', 'png', 'pdf', 'xlsx'])
 
             if uploaded_file:
@@ -57,65 +52,43 @@ def render_warehouse_tab():
                 if st.button("🚀 Распознать документ"):
                     with st.spinner("Анализирую документ..."):
                         proc = DocumentProcessor()
-                        raw = proc.process_file(path)  # Используем новый универсальный метод
+                        raw = proc.process_file(path)
                         st.session_state['ocr_data'] = proc.extract_structured_data(raw)
-                        # ... (остальной код отображения колонок остается таким же)
+                        st.rerun()
 
-                # Если данные распознаны, выводим их в редактируемые поля
+                if 'ocr_data' in st.session_state and st.session_state['ocr_data']:
+                    st.markdown("### 📝 Проверьте данные:")
 
-                        # ... (код выше такой же)
+                    new_data = []
+                    # Отображаем текущие данные из session_state
+                    for i, entry in enumerate(st.session_state['ocr_data']):
+                        row_id = entry.get('id', i)
 
-                        if 'ocr_data' not in st.session_state:
-                            st.session_state['ocr_data'] = []
+                        col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
+                        with col1:
+                            item = st.text_input("Товар", value=entry.get('item', ''), key=f"item_{row_id}")
+                        with col2:
+                            qty = st.number_input("Кол-во", value=float(entry.get('qty', 1.0)), key=f"qty_{row_id}")
+                        with col3:
+                            price = st.number_input("Цена", value=float(entry.get('price', 0.0)), key=f"price_{row_id}")
+                        with col4:
+                            st.write("###")
+                            if st.button("❌", key=f"del_{row_id}"):
+                                # Просто удаляем из списка session_state
+                                st.session_state['ocr_data'].pop(i)
+                                st.rerun()
 
-                        final_data = []
-                        # Используем список индексов для удаления
-                        to_remove = None
-
-                        for i, entry in enumerate(st.session_state['ocr_data']):
-                            # Делим на 4 колонки: Название, Кол-во, Цена, Удаление
-                            col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
-
-                            with col1:
-                                # Уникальный ключ для названия
-                                item = st.text_input(f"Товар", value=entry.get('item', ''), key=f"item_{i}")
-                            with col2:
-                                # Уникальный ключ для кол-ва
-                                qty = st.number_input(f"Кол-во", value=float(entry.get('qty', 1.0)), key=f"qty_{i}")
-                            with col3:
-                                # Уникальный ключ для цены (изменили на price_{i})
-                                price = st.number_input(f"Цена", value=float(entry.get('price', 0.0)), key=f"price_{i}")
-                            with col4:
-                                st.write("###")
-                                if st.button("🗑️", key=f"del_{i}"):
-                                    st.session_state['ocr_data'].pop(i)
-                                    st.rerun()
-
-                            # Сохраняем все данные в список
-                            final_data.append({'item': item, 'qty': qty, 'price': price})
-
-                        # Логика удаления
-                        if to_remove is not None:
-                            st.session_state['ocr_data'].pop(to_remove)
-                            st.rerun()  # Перезагружаем страницу, чтобы список обновился
-
-                        # ... (далее идет кнопка сохранения)
+                        new_data.append({'item': item, 'qty': qty, 'price': price, 'id': row_id})
 
                     if st.button("✅ Сохранить в базу"):
-
-                        for data in final_data:
+                        for data in new_data:
                             execute_query(
-
                                 "INSERT INTO inventory (date, item, qty, price, reason) VALUES (%s, %s, %s, %s, %s)",
-
-                                (str(datetime.date.today()), data['item'], data['qty'], 0.0, "OCR Закуп"))
+                                (str(datetime.date.today()), data['item'], data['qty'], data['price'], "OCR Закуп"))
 
                         st.success("Данные успешно сохранены!")
-
                         del st.session_state['ocr_data']
-
                         os.remove(path)
-
                         st.rerun()
 
     # --- КОЛОНКА 2: СПИСАНИЕ ---
@@ -130,7 +103,6 @@ def render_warehouse_tab():
 
             if st.button("🗑️ Списать со склада", type="primary", use_container_width=True):
                 if waste_qty > 0:
-                    # ВАЖНО: используем -waste_qty для вычитания из остатков
                     execute_query("INSERT INTO inventory (date, item, qty, price, reason) VALUES (%s, %s, %s, %s, %s)",
                                   (str(datetime.date.today()), waste_item, -waste_qty, 0.0, waste_reason))
                     st.success(f"Списано {waste_qty} единиц")
