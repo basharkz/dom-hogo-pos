@@ -55,12 +55,23 @@ def render_warehouse_tab():
                     f.write(uploaded_file.getbuffer())
 
                 if st.button(":rocket: Распознать документ", use_container_width=True):
-                    with st.spinner("Анализирую..."):
+                    # Создаем "элитный" индикатор прогресса
+                    progress_text = "Анализ документа... Пожалуйста, подождите."
+                    my_bar = st.progress(0, text=progress_text)
+
+                    with st.spinner(progress_text):
                         proc = DocumentProcessor()
 
+                        # Шаг 1: Чтение (занимает 30% времени)
+                        my_bar.progress(30, text="Читаю текст...")
                         raw = proc.process_file(path)
 
+                        # Шаг 2: Структурирование (занимает 60% времени)
+                        my_bar.progress(60, text="Структурирую данные...")
                         st.session_state['ocr_data'] = proc.extract_structured_data(raw)
+
+                        # Шаг 3: Завершение
+                        my_bar.progress(100, text="Готово!")
 
                         st.rerun()
 
